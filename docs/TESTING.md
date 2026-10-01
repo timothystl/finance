@@ -6,7 +6,7 @@ Use Node 22. Tests are vitest files in `test/` (config in `vitest.config.js`).
 npm ci
 npm test                         # every test file
 npm run test:finance             # test/finance-*.test.js (today, the same set)
-npm run validate:finance         # test:finance + staging dry-run deploy
+npm run validate:finance         # test:finance + production dry-run deploy
 npm run validate:finance:prod    # test:finance + production dry-run deploy
 node .github/scripts/check-built-scripts.js   # the vendored workspace scripts still parse
 ```
@@ -36,7 +36,7 @@ Fourteen cross-app test files that exercised Connect and Finance together were r
 left the Connect repository (October 1, 2026); their names are not recorded here. Tests of Connect's
 side of each contract now belong in Connect. Finance tests use mocked Connect and Website responses;
 nothing here proves a live contract still matches. After a Connect contract change, check the
-validators and, when in doubt, load the affected page in staging.
+validators and, when in doubt, check the affected page after release (there is no staging).
 
 ## What the tests do not do
 

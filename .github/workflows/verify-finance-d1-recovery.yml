@@ -1,27 +1,11 @@
 name: Verify Finance D1 backup and recovery
 
-# Finance's own port of this repo's tested "Verify D1 backup and recovery"
-# workflow (for the shared Connect database) -- see
-# scripts/verify-finance-d1-recovery.sh for what changed and what did not in
-# the port. No production Finance D1 database exists yet (see
-# docs/FINANCE_PRODUCTION_CUTOVER.md), so SOURCE_DB / SOURCE_DB_ID below
-# target the one Finance database that does exist today: staging's
-# `timothy-finance-db-staging`. Once a real production Finance database is
-# created per the cutover runbook, repointing this drill at it is a one-line
-# change to those two env values -- nothing else in this workflow or the
-# script should need to change.
-#
-# workflow_dispatch-only, gated the same way deploy.yml and
-# verify-d1-recovery.yml already are: an approved main commit SHA, a reason,
-# and the `production` GitHub Environment (this repo's existing convention
-# for where protected secrets live and approval is required for any
-# workflow_dispatch that touches real infrastructure -- deploy-finance.yml
-# and deploy-finance-staging.yml use the same environment name for the same
-# reason, not because this drill touches production data).
-#
-# Needs two secrets that do not exist yet -- see the env block below.
-# Nothing in this workflow can run unattended: it only fires on an explicit,
-# human-dispatched workflow_dispatch with both secrets configured.
+# Finance's own port of Connect's tested "Verify D1 backup and recovery" workflow; see
+# scripts/verify-finance-d1-recovery.sh for what changed in the port. It exports the production
+# Finance database (read only), restores the export into a disposable D1 database, reconciles it, and
+# deletes the disposable database and the export. workflow_dispatch only: an approved main commit
+# SHA, a reason, and the `production` GitHub Environment. It needs the CLOUDFLARE_D1_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID secrets.
 
 on:
   workflow_dispatch:
@@ -65,8 +49,8 @@ jobs:
       # here to match that existing precedent rather than introduce a
       # second convention.
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      SOURCE_DB: timothy-finance-db-staging
-      SOURCE_DB_ID: 59dfc662-9f43-469f-936e-d7a0d3247036
+      SOURCE_DB: timothy-finance-db
+      SOURCE_DB_ID: 04988828-94b7-43bc-9689-ff570951f1c7
       RESULT_FILE: /tmp/finance-d1-recovery-result.json
     steps:
       - name: Check out the approved commit

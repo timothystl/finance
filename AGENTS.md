@@ -17,8 +17,8 @@ he needs to do or check). Keep technical detail in commits and PRs.
 ## Runtime and ownership
 
 - This repo is `timothystl/finance`, split from `timothystl/connect` with full history. The Worker is
-  `apps/finance/shell.js`, deployed as `timothy-finance-app` with `timothy-finance-db`; staging is
-  isolated.
+  `apps/finance/shell.js`, deployed as `timothy-finance-app` with `timothy-finance-db`. There is no staging copy (retired
+  October 2026); verify with tests and a production dry-run, then release.
 - Connect (separate repo and Worker, `timothy-connect`) stays authoritative for Giving, people, roles
   and the contracts Finance consumes. Finance reads versioned contract summaries and relays Giving
   and compensation writes through the `CONNECT_SERVICE` binding. Never copy a Connect secret or
