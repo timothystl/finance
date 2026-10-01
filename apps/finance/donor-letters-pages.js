@@ -5,6 +5,7 @@
 // in the shared ledger, so a run can stop and resume without writing to anyone twice.
 import { LETTER_TYPES, escapeHtml as e, fmtDate, fmtMoney, letterTypeOf, renderStatementLetter } from './donor-letters.js';
 import { EMAIL_BATCH, PRINT_LIMIT } from './donor-letters-service.js';
+import { ICON_LINKS } from './icon-links.js';
 
 export const DONOR_LETTER_PAGES = ['letters', 'receipts', 'nudge-letters', 'statement', 'settings'];
 const KIND_OF_PAGE = { letters: 'letters', receipts: 'receipts', 'nudge-letters': 'nudges' };
@@ -204,7 +205,7 @@ export function renderPrintSheet({ letters, kind, params, keepFields: fields, ca
   const pages = letters.map((l) => `<section class="sheet">${l.html}</section>`).join('');
   const mark = canEdit && kind !== 'single' ? `<form method="POST" action="/api/v1/giving-letters">${hidden('kind', kind)}${fields}${letters.map((l) => hidden('key', l.recipient_key)).join('')}
       <button type="submit" name="action" value="mark">Mark these ${letters.length} as printed</button></form>` : '';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Letters to print · Timothy Finance</title>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${ICON_LINKS}<title>Letters to print · Timothy Finance</title>
 <style>body{margin:0;background:#EEF0F4;font-family:Georgia,serif;color:#16213A}.bar{position:sticky;top:0;display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 20px;background:#fff;border-bottom:1px solid #E3E6EC;font:14px system-ui,sans-serif}.bar form{margin:0}.bar button{padding:8px 14px;border:0;border-radius:8px;background:#1B2A4A;color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer}.sheet{max-width:640px;margin:20px auto;padding:48px 56px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}@media print{body{background:#fff}.bar{display:none}.sheet{margin:0;padding:0 0 0;box-shadow:none;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}}</style>
 </head><body><div class="bar"><b>${letters.length} letter${letters.length === 1 ? '' : 's'} ready to print</b><span>Use your browser’s Print (Ctrl+P or ⌘P); each letter starts a new page.</span>${note ? `<span>${e(note)}</span>` : ''}${mark}</div>${pages || '<p style="padding:20px">No letters to print.</p>'}</body></html>`;
 }
