@@ -8,7 +8,7 @@ import { FINANCE_RELEASE_CHANNEL, FINANCE_VERSION } from '../apps/finance/versio
 import { FINANCE_QUERY_BUDGETS, runBudgetedReadBatch } from '../apps/finance/query-budget.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const config = JSON.parse(fs.readFileSync(path.join(repoRoot, 'wrangler.finance.staging.jsonc'), 'utf8'));
+const config = JSON.parse(fs.readFileSync(path.join(repoRoot, 'wrangler.finance.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, ''));
 const summarySchema = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/finance/contracts/summary-v1.schema.json'), 'utf8'));
 const statements = [];
 const env = {
@@ -126,17 +126,17 @@ describe('Finance alpha staging shell', () => {
     expect(FINANCE_RELEASE_CHANNEL).toBe('alpha');
   });
 
-  it('has a staging-only Worker name and no stateful or outbound bindings', () => {
-    expect(config.name).toBe('timothy-finance-app-staging');
-    expect(config.vars.ENVIRONMENT).toBe('staging');
+  it('pins the production Worker name and its bindings', () => {
+    expect(config.name).toBe('timothy-finance-app');
+    expect(config.vars.ENVIRONMENT).toBe('production');
     expect(config.workers_dev).toBe(false);
     expect(config.preview_urls).toBe(false);
     expect(config.routes).toEqual([
-      { pattern: 'finance-staging.timothystl.org', custom_domain: true },
+      { pattern: 'finance.timothystl.org', custom_domain: true },
     ]);
     expect(config.d1_databases).toEqual([expect.objectContaining({
       binding: 'FINANCE_DB',
-      database_name: 'timothy-finance-db-staging',
+      database_name: 'timothy-finance-db',
       migrations_dir: 'apps/finance/migrations',
     })]);
     const shell = fs.readFileSync(path.join(repoRoot, 'apps/finance/shell.js'), 'utf8');
@@ -147,7 +147,7 @@ describe('Finance alpha staging shell', () => {
     }
     // One private R2 bucket, for Facilities photos and scanned documents (facility-files.js).
     // Pinned exactly so any other storage binding still fails this test.
-    expect(config.r2_buckets).toEqual([{ binding: 'FACILITY_FILES', bucket_name: 'timothy-finance-files-staging' }]);
+    expect(config.r2_buckets).toEqual([{ binding: 'FACILITY_FILES', bucket_name: 'timothy-finance-files' }]);
     // 'services' is deliberately no longer in the forbidden list above: the two bindings this
     // config carries are each an intentional, narrow real connection -- CONNECT_SERVICE for
     // connect.giving-summary.v1 (see connect-giving-client.js), PAYROLL_SERVICE for Website's
@@ -156,7 +156,7 @@ describe('Finance alpha staging shell', () => {
     // Website's PRODUCTION admin Worker (timothy-website-admin has no staging counterpart) --
     // so a future addition of some other outbound service still fails this test.
     expect(config.services).toEqual([
-      { binding: 'CONNECT_SERVICE', service: 'timothy-connect-staging' },
+      { binding: 'CONNECT_SERVICE', service: 'timothy-connect' },
       { binding: 'PAYROLL_SERVICE', service: 'timothy-website-admin' },
     ]);
   });

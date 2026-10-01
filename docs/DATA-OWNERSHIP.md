@@ -44,6 +44,6 @@ only the church-side accounting entries it syncs or has entered.
 Verify the current source and target, take a usable backup, reconcile counts and financial controls,
 preserve provenance, and switch the authoritative writer deliberately. Do not reverse an owner after
 new writes were accepted without reconciling the newer data first. Do not seed production with
-synthetic data: `apps/finance/fixtures/` is staging-only and applied by hand. Do not enable the
+synthetic data: `apps/finance/fixtures/` is for local testing only and applied by hand. Do not enable the
 off-by-default native writers (see [the app README](../apps/finance/README.md)) as a side effect of other work.
 The recovery procedure and the copy script are in [OPERATIONS](OPERATIONS.md).

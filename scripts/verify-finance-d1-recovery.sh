@@ -18,15 +18,9 @@ set -euo pipefail
 # database defaults, the disposable-database naming prefix, and the
 # exported/imported file names, is Finance-specific.
 #
-# Target: no production Finance D1 database exists yet (see
-# docs/FINANCE_PRODUCTION_CUTOVER.md) -- this drills against the one Finance
-# database that does exist today, staging's `timothy-finance-db-staging`.
-# SOURCE_DB / SOURCE_DB_ID are plain environment variables specifically so
-# that pointing this at the real production Finance database later (once
-# created, per the cutover runbook) is a one-line workflow-env change, not a
-# script edit.
+# Target: the production Finance database (SOURCE_DB / SOURCE_DB_ID are set by the workflow).
 
-source_db="${SOURCE_DB:-timothy-finance-db-staging}"
+source_db="${SOURCE_DB:-timothy-finance-db}"
 source_db_id="${SOURCE_DB_ID:?SOURCE_DB_ID is required}"
 restore_db="timothy-finance-recovery-$(date -u +%Y%m%d%H%M%S)-$$"
 temp_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/timothy-finance-d1-recovery.XXXXXX")"

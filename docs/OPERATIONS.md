@@ -4,32 +4,34 @@
 further signoff. History of the setup and the September 2026 data cutover is in git (the retired
 cutover runbook and its commits); this page is only what is needed to run Finance now.
 
-## Environments
+## Environment
 
-| | Production | Staging |
-| --- | --- | --- |
-| Worker / host | `timothy-finance-app`, `finance.timothystl.org` | `timothy-finance-app-staging`, `finance-staging.timothystl.org` |
-| Database / files | `timothy-finance-db`, `timothy-finance-files` | `timothy-finance-db-staging`, `timothy-finance-files-staging` |
-| Connect binding | `timothy-connect` | `timothy-connect-staging` |
-| QuickBooks | production, enabled | sandbox, disabled |
-| Config | `wrangler.finance.jsonc` | `wrangler.finance.staging.jsonc` |
-| Sample data | never | synthetic fixtures (`apps/finance/fixtures/`), applied by hand |
+There is one environment, production. A staging copy existed until October 2026 and was retired
+and deleted (Worker, database, files bucket); there is no place to try a change except tests and a
+dry-run deploy.
 
-Both hosts are behind Cloudflare Access. Staging's Payroll binding points at production Website
-Admin, so do not exercise payroll writes from staging.
+| | Production |
+| --- | --- |
+| Worker / host | `timothy-finance-app`, `finance.timothystl.org` |
+| Database / files | `timothy-finance-db`, `timothy-finance-files` |
+| Connect binding | `timothy-connect` |
+| QuickBooks | production, enabled |
+| Config | `wrangler.finance.jsonc` |
+| Sample data | never (`apps/finance/fixtures/` are for local testing, applied by hand, never in production) |
+
+The host is behind Cloudflare Access.
 
 ## Releasing
 
 Merging to `main` does not deploy. Pull requests touching Finance code run
-`.github/workflows/validate-finance.yml` (tests plus staging and production dry-run deploys).
+`.github/workflows/validate-finance.yml` (tests plus a production dry-run deploy).
 
 1. Merge after `npm test` and `npm run validate:finance:prod` pass.
-2. Optional: dispatch **Deploy Finance Staging** (`deploy-finance-staging.yml`, from main, no inputs).
-3. Dispatch **Deploy Finance Production** (`deploy-finance.yml`) with the exact tested full `main`
+2. Dispatch **Deploy Finance Production** (`deploy-finance.yml`) with the exact tested full `main`
    SHA (`expected_sha`) and a real `reason`. It confirms the SHA is on main, refuses a placeholder
    database ID, reruns the production validation, creates the Facilities bucket only if missing,
    deploys with `RELEASE_SHA` set, and writes a deployment summary.
-4. Confirm: the workflow run completed, and (signed in through Access) `/health` reports the
+3. Confirm: the workflow run completed, and (signed in through Access) `/health` reports the
    same `releaseSha`. A green build is not proof of data correctness or staff acceptance.
 
 Deploy only Finance for a Finance change. If a Connect contract changed, release Connect first and
@@ -58,9 +60,8 @@ check the vendored validators in `contracts/validators/` and the copies in `src/
 - Recovery drill: **Verify Finance D1 backup and recovery** (`verify-finance-d1-recovery.yml`,
   dispatched with a main SHA and reason). It exports the database, restores it into a disposable D1,
   compares schema, integrity, every table's row count and the monetary-column totals, then deletes
-  the disposable database and the export. It prints no row values. **Today its source is the
-  staging database** (set in the workflow); pointing it at production is a two-value edit to the
-  workflow's `SOURCE_DB` and `SOURCE_DB_ID`. `scripts/prepare-d1-import.py` is the helper it calls
+  the disposable database and the export. It prints no row values. Its source is the production database
+  (`SOURCE_DB` and `SOURCE_DB_ID` in the workflow); it only reads from it. `scripts/prepare-d1-import.py` is the helper it calls
   to rewrite oversized export statements. Database recovery does not recover R2 file bytes.
 
 ## QuickBooks
@@ -88,7 +89,7 @@ must be exactly one refresh-token writer; never copy a token between apps or run
 
 | Name | Where it lives | Used for |
 | --- | --- | --- |
-| `CLOUDFLARE_API_TOKEN` (the `deploy` token) | GitHub `production` environment of this repository | Production and staging deploys |
+| `CLOUDFLARE_API_TOKEN` (the `deploy` token) | GitHub `production` environment of this repository | Production deploys |
 | `CLOUDFLARE_D1_API_TOKEN` (the `d1-data` token) | same | Recovery drill only |
 | `CLOUDFLARE_ACCOUNT_ID` | same (an identifier, not a credential) | Deploys and the recovery drill |
 | `FINANCE_CONTRACT_API_KEY`, `FINANCE_PAYROLL_CONTRACT_KEY` | Cloudflare Worker secrets (and the matching key on the receiving Connect / Website Admin Worker) | Authenticating calls to Connect and Website Admin |
@@ -102,7 +103,7 @@ Worker cannot be read from this repository.
 
 ## Access (Cloudflare Zero Trust)
 
-Finance's Access application for `finance.timothystl.org` is separate from staging's and was enforcing
+Finance's Access application for `finance.timothystl.org` was enforcing
 from the first route deployment (September 15, 2026). A parity checklist for production (policy limited
 to church accounts, Google Workspace sign-in, branded login page, session duration of an hour or less,
 offboarding) was drafted but never recorded as completed; verify those settings in the dashboard.

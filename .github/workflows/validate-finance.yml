@@ -6,7 +6,6 @@ on:
       - 'apps/finance/**'
       - 'contracts/**'
       - 'test/finance-*.test.js'
-      - 'wrangler.finance.staging.jsonc'
       - 'wrangler.finance.jsonc'
       - 'package.json'
       - 'package-lock.json'
@@ -28,5 +27,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:finance
-      - run: npx wrangler deploy --dry-run --config wrangler.finance.staging.jsonc
       - run: npx wrangler deploy --dry-run --config wrangler.finance.jsonc

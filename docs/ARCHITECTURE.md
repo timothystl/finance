@@ -16,19 +16,18 @@ Finance was split out of the Connect repository on October 1, 2026 with its full
 
 ## Bindings (names only; real IDs are in the wrangler files)
 
-| Binding | Production (`wrangler.finance.jsonc`) | Staging (`wrangler.finance.staging.jsonc`) |
-| --- | --- | --- |
-| Worker name | `timothy-finance-app` at `finance.timothystl.org` | `timothy-finance-app-staging` at `finance-staging.timothystl.org` |
-| `FINANCE_DB` (D1) | `timothy-finance-db` | `timothy-finance-db-staging` |
-| `FACILITY_FILES` (R2, private) | `timothy-finance-files` | `timothy-finance-files-staging` |
-| `CONNECT_SERVICE` | `timothy-connect` | `timothy-connect-staging` |
-| `PAYROLL_SERVICE` | `timothy-website-admin` | `timothy-website-admin` (production Website Admin) |
+| Binding | Production (`wrangler.finance.jsonc`) |
+| --- | --- |
+| Worker name | `timothy-finance-app` at `finance.timothystl.org` |
+| `FINANCE_DB` (D1) | `timothy-finance-db` |
+| `FACILITY_FILES` (R2, private) | `timothy-finance-files` |
+| `CONNECT_SERVICE` | `timothy-connect` |
+| `PAYROLL_SERVICE` | `timothy-website-admin` |
 
-There is no KV binding and no binding to Connect's database. Both hostnames sit behind Cloudflare
+There is no KV binding and no binding to Connect's database. The hostname sits behind Cloudflare
 Access; the Worker also verifies the Access token itself (`FINANCE_ACCESS_TEAM_DOMAIN`,
 `FINANCE_ACCESS_AUD`). Other settings: `ENVIRONMENT`, `RELEASE_SHA` (set by the deploy workflow),
-`FINANCE_QB_ENABLED` and `FINANCE_QB_ENVIRONMENT` (production `1` / `production`; staging `0` /
-`sandbox`), `FINANCE_LOCAL_CONTRACT_READS` (production only).
+`FINANCE_QB_ENABLED` and `FINANCE_QB_ENVIRONMENT` (production `1` / `production`), `FINANCE_LOCAL_CONTRACT_READS` (production only).
 
 Worker secrets the code reads, by name: `FINANCE_CONTRACT_API_KEY` (calls to Connect),
 `FINANCE_PAYROLL_CONTRACT_KEY` (calls to Website Admin), `FINANCE_QB_CLIENT_ID`,

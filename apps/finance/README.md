@@ -44,7 +44,7 @@ A separate familiar accounting layout is served at `/accounting` (see ARCHITECTU
 
 - Some overview cards and the preview endpoints (`/api/v1/summary`, `/api/v1/connect-giving-preview`)
   can fall back to a labeled synthetic fixture when a live read fails. The production database holds
-  no synthetic rows, so such a card shows "unavailable". Fixtures (`fixtures/`) are staging-only.
+  no synthetic rows, so such a card shows "unavailable". Fixtures (`fixtures/`) are for local testing only.
 - Role checks need Connect. If Connect is unreachable, page views use a role cached for up to seven
   days (with a notice); saves always require a live check and are refused otherwise.
 - A stored QuickBooks token or past sync does not prove the connection works today. Confirm it on
@@ -70,4 +70,4 @@ A separate familiar accounting layout is served at `/accounting` (see ARCHITECTU
 - `quickbooks-*.js`: QuickBooks connection, sync, sync backups, transactions.
 - `migrations/`: Finance D1 migrations; `finance-owned-schema.js` creates the later tables on first use.
 - `migration/`: copy-and-verify tooling used for the accounting data move.
-- `fixtures/`: synthetic staging data; applied by hand, never as a migration, never to production.
+- `fixtures/`: synthetic test data; applied by hand, never as a migration, never to production.
