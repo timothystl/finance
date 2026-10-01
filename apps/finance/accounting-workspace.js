@@ -8,6 +8,7 @@ import { isSameOriginPost } from './form-post.js';
 import { accountingWorkspaceTarget } from '../../contracts/accounting-workspace.js';
 import { localContractReadsEnabled } from './local-contract-reads.js';
 import { answersLocally, runWorkspaceOperation } from './accounting/workspace.js';
+import { ICON_LINKS } from './icon-links.js';
 
 export { CONNECT_PLANNER_JS as ACCOUNTING_JS, CONNECT_PLANNER_CSS as ACCOUNTING_CSS, CONNECT_PLANNER_CSP as ACCOUNTING_CSP };
 const start = HTML_TABS_2.indexOf('<div id="tab-finance"');
@@ -60,7 +61,7 @@ export const ACCOUNTING_BOOT = String.raw`(function(){
 })();`;
 
 export function renderAccountingWorkspace(viewer, url, version) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${ICON_LINKS}
 <title>Accounting workspace · Timothy Finance</title><link rel="stylesheet" href="/accounting/app.css?v=${encodeURIComponent(version || 'dev')}">
 <style>html,body{height:auto;overflow:auto}body{margin:0;background:var(--warm-bg,#F3F7FA)}#tab-finance{display:block!important}.workspace-header{padding:14px 20px;background:#fff;border-bottom:1px solid #ddd;display:flex;gap:20px;align-items:center}@media print{.workspace-header{display:none}}</style>
 </head><body><header class="workspace-header"><strong>Timothy Finance · Accounting workspace</strong><a href="/" target="_top">New Finance pages</a><a href="/?section=quickbooks" target="_top">QuickBooks</a></header>

@@ -169,6 +169,7 @@ import { readSyntheticCompensationBenchmarks } from './compensation-benchmark-se
 import { readSyntheticCompensationBenefits } from './compensation-benefits-service.js';
 import { readSyntheticPropertyDistributions } from './property-distributions-service.js';
 import { BRAND_ASSETS, brandAssetBytes } from './brand-assets.js';
+import { ICON_LINKS } from './icon-links.js';
 import { escapeHtml, formatCents, formatSignedCents, renderDataUnavailablePage, renderUnavailableCard, renderUnavailablePage } from './render-helpers.js';
 import { isSyntheticUnavailable, safeSyntheticRead } from './synthetic-read-guard.js';
 import { withLocalContractReads } from './local-contract-reads.js';
@@ -340,7 +341,7 @@ function renderChurchBudgetImportPreview(preview) {
     <td>${escapeHtml(row.classification || '')}</td><td>${escapeHtml(row.category_path || '')}</td>
     <td>${formatCents(row.own_actual_cents)}</td><td>${formatCents(row.own_budget_cents)}</td>
   </tr>`).join('');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${ICON_LINKS}
   <title>Review Church Budget import · Timothy Finance</title><style>body{font:16px system-ui;margin:2rem auto;max-width:72rem;padding:0 1rem;color:#172019}table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border-bottom:1px solid #d9dfda;padding:.55rem;text-align:left}button{background:#1f6b45;color:white;border:0;border-radius:.45rem;padding:.7rem 1rem;font-weight:700}a{color:#1f6b45}.note{background:#f4f7f4;padding:1rem;border-radius:.5rem}</style></head><body>
   <h1>Review Budget vs. Actuals import</h1><p class="note"><strong>No data has been changed.</strong> Review FY${escapeHtml(String(preview.fiscalYear))} from “${escapeHtml(preview.sheetName || 'uploaded workbook')}”. Uncheck anything that should not overwrite the current imported row.</p>
   <form method="POST" action="/api/v1/connect-church-budget-xlsx-commit"><input type="hidden" name="fiscal_year" value="${escapeHtml(String(preview.fiscalYear))}">
@@ -355,7 +356,7 @@ function renderChurchBalancesImportPreview(preview) {
     <td>${escapeHtml(row.classification || '')}</td><td>${escapeHtml(row.category_path || '')}</td>
     <td>${formatCents(row.own_balance_cents)}</td>
   </tr>`).join('');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${ICON_LINKS}
   <title>Review Balance Sheet import · Timothy Finance</title><style>body{font:16px system-ui;margin:2rem auto;max-width:72rem;padding:0 1rem;color:#172019}table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border-bottom:1px solid #d9dfda;padding:.55rem;text-align:left}button{background:#1f6b45;color:white;border:0;border-radius:.45rem;padding:.7rem 1rem;font-weight:700}a{color:#1f6b45}.note{background:#f4f7f4;padding:1rem;border-radius:.5rem}</style></head><body>
   <h1>Review Statement of Financial Position import</h1><p class="note"><strong>No data has been changed.</strong> Review FY${escapeHtml(String(preview.fiscalYear))} as of ${escapeHtml(preview.asOfDate || 'the workbook date')} from “${escapeHtml(preview.sheetName || 'uploaded workbook')}”. Uncheck anything that should not overwrite the current imported row.</p>
   <form method="POST" action="/api/v1/connect-church-balances-xlsx-commit"><input type="hidden" name="fiscal_year" value="${escapeHtml(String(preview.fiscalYear))}"><input type="hidden" name="as_of_date" value="${escapeHtml(preview.asOfDate || '')}">
@@ -378,7 +379,7 @@ function renderChurchMultiPeriodImportPreview(kind, preview) {
     const period = kind === 'monthly' ? `FY${row.fiscal_year} · month ${row.period_month}` : `FY${row.fiscal_year}`;
     return `<tr><td><input type="checkbox" name="row" value="${escapeHtml(JSON.stringify(row))}" checked aria-label="Include ${escapeHtml(row.account_name || `row ${index + 1}`)}"></td><td>${escapeHtml(period)}</td><td>${escapeHtml(row.classification || '')}</td><td>${escapeHtml(row.category_path || '')}</td><td>${formatCents(amount)}</td></tr>`;
   }).join('');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Review ${settings.title} import · Timothy Finance</title><style>body{font:16px system-ui;margin:2rem auto;max-width:76rem;padding:0 1rem;color:#172019}table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border-bottom:1px solid #d9dfda;padding:.55rem;text-align:left}button{background:#1f6b45;color:white;border:0;border-radius:.45rem;padding:.7rem 1rem;font-weight:700}a{color:#1f6b45}.note{background:#f4f7f4;padding:1rem;border-radius:.5rem}</style></head><body><h1>Review ${settings.title} import</h1><p class="note"><strong>No data has been changed.</strong> Review ${(preview.years || []).map(year => `FY${escapeHtml(String(year))}`).join(', ')} from “${escapeHtml(preview.sheetName || 'uploaded workbook')}”. Uncheck anything that should not be imported.</p><form method="POST" action="/api/v1/connect-${settings.commit}">${yearInputs}<table><thead><tr><th>Include</th><th>Period</th><th>Classification</th><th>Account</th><th>Amount</th></tr></thead><tbody>${body}</tbody></table><button type="submit">Import selected rows</button> <a href="/?section=${settings.returnTo}">Cancel without importing</a></form></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${ICON_LINKS}<title>Review ${settings.title} import · Timothy Finance</title><style>body{font:16px system-ui;margin:2rem auto;max-width:76rem;padding:0 1rem;color:#172019}table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border-bottom:1px solid #d9dfda;padding:.55rem;text-align:left}button{background:#1f6b45;color:white;border:0;border-radius:.45rem;padding:.7rem 1rem;font-weight:700}a{color:#1f6b45}.note{background:#f4f7f4;padding:1rem;border-radius:.5rem}</style></head><body><h1>Review ${settings.title} import</h1><p class="note"><strong>No data has been changed.</strong> Review ${(preview.years || []).map(year => `FY${escapeHtml(String(year))}`).join(', ')} from “${escapeHtml(preview.sheetName || 'uploaded workbook')}”. Uncheck anything that should not be imported.</p><form method="POST" action="/api/v1/connect-${settings.commit}">${yearInputs}<table><thead><tr><th>Include</th><th>Period</th><th>Classification</th><th>Account</th><th>Amount</th></tr></thead><tbody>${body}</tbody></table><button type="submit">Import selected rows</button> <a href="/?section=${settings.returnTo}">Cancel without importing</a></form></body></html>`;
 }
 
 // Same shape as describeChurchOverrideError above, for postConnectChurchBudgetXlsxImport() /
@@ -2083,7 +2084,7 @@ export default {
     }
 
     if (route.id === 'brand-asset') {
-      const asset = BRAND_ASSETS[url.pathname];
+      const asset = BRAND_ASSETS[url.pathname === '/favicon.ico' ? '/assets/finance-icon-192.png' : url.pathname];
       return response(request.method === 'HEAD' ? null : brandAssetBytes(asset), {
         headers: { 'Content-Type': asset.contentType },
       }, { cacheControl: 'public, max-age=86400' });
