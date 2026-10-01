@@ -25,10 +25,12 @@ he needs to do or check). Keep technical detail in commits and PRs.
   database into Finance.
 - Files under `src/` and `contracts/` are vendored copies from Connect. Change the source of truth in
   Connect first when a contract changes, then update the copy here.
-- Finance settings use `finance_settings`. Check actual database state before schema changes.
+- Finance settings use `finance_settings`. Check actual database state before schema changes; later
+  tables are created on first use by `apps/finance/finance-owned-schema.js`, not only by migrations.
 - QuickBooks has a historical successful connection; a stored token does not prove current
   connectivity. Avoid competing refresh-token writers.
-- TinyMCE is self-hosted from `vendor/tinymce/` where used; preserve the self-hosted editor.
+- Finance ships no editor of its own. The vendored `src/frontend/` scripts mention a self-hosted TinyMCE
+  (`vendor/tinymce/`, which is not in this repository); do not add a cloud-hosted editor dependency.
 
 ## Data and authorization
 
@@ -44,3 +46,11 @@ Use Node 22. Run `npm test` and `node .github/scripts/check-built-scripts.js`; f
 confidence also `npm run validate:finance:prod`. Main merges do not deploy. To release, dispatch
 `.github/workflows/deploy-finance.yml` with the exact tested main SHA and a real reason. Confirm the
 deployed revision afterward.
+
+## Documentation
+
+Canonical docs: `README.md`, this file, `apps/finance/README.md`, and `docs/` (ARCHITECTURE,
+DATA-OWNERSHIP, OPERATIONS, TESTING). Keep them current when behavior or ownership changes; do not add
+diaries, completed task lists or dated progress notes (git history is the record). Cross-app
+architecture lives in [digital-architecture](https://github.com/timothystl/digital-architecture); link,
+do not copy. Older "approval gate" wording in workflow and config comments is superseded by this file.
