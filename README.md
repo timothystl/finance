@@ -19,7 +19,7 @@ summaries from Connect and relays Giving and compensation writes back to it over
 | `wrangler.finance.jsonc`, `wrangler.finance.staging.jsonc` | Production and staging Worker configuration |
 | `contracts/validators/` | Consumer-side validators for the contracts Connect publishes (Connect is the source of truth) |
 | `src/`, `contracts/accounting-workspace.js` | Vendored copies of Connect files (the `/accounting` workspace markup and scripts, a storage helper, and helpers used by tests). Connect is the source of truth; retire them as native pages replace them. |
-| `docs/` | ARCHITECTURE, DATA-OWNERSHIP, OPERATIONS, TESTING |
+| `docs/` | ARCHITECTURE, DATA-OWNERSHIP, OPERATIONS, TESTING, FACILITIES_IMPORT |
 | `scripts/` | Accounting data copy, D1 recovery drill and its import helper |
 | `.github/workflows/` | Validation, staging deploy, production deploy, D1 recovery check |
 
@@ -44,5 +44,5 @@ full procedure, rollback, secrets (by name) and the recovery drill are in [docs/
 
 [AGENTS.md](AGENTS.md) (working rules; `CLAUDE.md` imports it), [apps/finance/README.md](apps/finance/README.md)
 (what the app does), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATA-OWNERSHIP.md](docs/DATA-OWNERSHIP.md),
-[docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/TESTING.md](docs/TESTING.md). Cross-app architecture and plan:
+[docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/TESTING.md](docs/TESTING.md), [docs/FACILITIES_IMPORT.md](docs/FACILITIES_IMPORT.md) (the one-time Facilities bundle loader). Cross-app architecture and plan:
 [digital-architecture](https://github.com/timothystl/digital-architecture). History lives in git, not in docs.
