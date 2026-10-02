@@ -109,3 +109,13 @@ to church accounts, Google Workspace sign-in, branded login page, session durati
 offboarding) was drafted but never recorded as completed; verify those settings in the dashboard.
 The checklist's offboarding rule (unconfirmed) is to both suspend the Workspace account and revoke
 the person in Zero Trust. Access does not grant Finance permissions: roles come from Connect.
+
+Logo files bypass Access. Phones and browsers fetch the home-screen icon without a session, so behind
+Access they get the sign-in page and show a plain letter instead of the logo. A second Access
+application, "finance logo files" (hostname `finance.timothystl.org`, policy action Bypass, include
+Everyone), covers only the paths served by the `brand-asset` route in `apps/finance/route-manifest.js`
+(`/apple-touch-icon.png`, `/apple-touch-icon-precomposed.png`, `/favicon.ico`, `/manifest.webmanifest`,
+`/assets/finance-mark.png`, `/assets/finance-icon.png`, `/assets/finance-icon-192.png`,
+`/assets/finance-icon-512.png`, `/assets/finance-icon-maskable-512.png`). These serve only the logo; keep the
+list in step with that route. Check: an unauthenticated request for `/apple-touch-icon.png` returns the
+image, and one for `/` still redirects to sign-in.
