@@ -373,6 +373,7 @@ const ROUTES = [
   { id: 'tuition-aid-legacy-page', paths: ['/tuition-aid'], dataSource: 'none' },
   // Live totals for Planning > Budget planner (budget-planner-live.js): a script served by this Worker.
   { id: 'budget-planner-asset', paths: ['/budget-planner/live.js'], dataSource: 'none' },
+  { id: 'print-button-asset', paths: ['/print/print.js'], dataSource: 'none' },
   { id: 'compensation-planner-asset', paths: ['/compensation-planner/app.js'], dataSource: 'none' },
   { id: 'connect-planner-read-v1', paths: ['/api/v1/connect-planner/salary', '/api/v1/connect-planner/church-year', '/api/v1/connect-planner/board-categories', '/api/v1/connect-planner/purpose-tags'], dataSource: 'live-relay-read' },
   { id: 'connect-planner-save-v1', paths: ['/api/v1/connect-planner/salary-save'], methods: WRITE_METHODS, dataSource: 'live-relay', writer: true, contract: 'connect.finance-compensation-write-relay.v1' },

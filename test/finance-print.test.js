@@ -53,7 +53,8 @@ describe('print version of a page', () => {
     expect(html).toContain('Timothy Lutheran Church · Finance');
     expect(html).toContain('<h1 class="print-title">Capital improvements</h1>');
     expect(html).toContain('Vail Contracting LLC');
-    expect(html).toContain('onclick="window.print()"');
+    expect(html).toContain('id="print-now"');
+    expect(html).toContain('<script src="/print/print.js" defer></script>');
     expect(html).toContain('href="/?section=property&amp;page=capital"');
     expect(html).not.toContain('app-sidebar');
     expect(html).toMatch(/\.print-doc form[^{]*\{ display: none !important; \}/);

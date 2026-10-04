@@ -756,8 +756,14 @@ export function renderPlannerPrint({ builder: rawBuilder, params, councilDraft =
   const p = plannerYears(plannerParams(params, now), rawBuilder);
   const builder = councilDraft ? applyCouncilDraft(rawBuilder, councilDraft) : rawBuilder;
   const model = buildPlannerModel(builder, { layout, params: p });
-  const showPlan = p.printMode !== 'thisyear';
-  const cols = showPlan ? ['bud', 'act', 'used', 'proj', 'plan', 'change', 'delta'] : ['bud', 'act', 'used', 'proj'];
+  // The sheet prints the columns chosen on screen. The target-year story (title, tiles, narrative)
+  // only appears when a target-year column is among them; otherwise it is a sheet about the base year.
+  const baseCols = ['bud', 'act', 'used', 'proj'];
+  const thisYearOnly = p.printMode === 'thisyear';
+  const chosen = thisYearOnly ? p.cols.filter((c) => baseCols.includes(c)) : p.cols;
+  const wanted = chosen.length ? chosen : (thisYearOnly ? baseCols : PLANNER_COLUMNS);
+  const showPlan = !thisYearOnly && wanted.some((c) => c === 'plan' || c === 'delta');
+  const cols = wanted.flatMap((c) => (c === 'plan' ? ['plan', 'change'] : [c]));
   const today = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const r = model.revenue;
   const x = model.expense;
