@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import worker from '../apps/finance/shell.js';
+import { renderPropertyPage } from '../apps/finance/property-pages.js';
 import { buildPropertyValuationMetaFromForm } from '../apps/finance/property-valuation-form.js';
 
 // Commercial Property screens for relays that already existed without a form: capital/repair
@@ -294,6 +295,25 @@ describe('Commercial Property debt payoff', () => {
     expect(html).toContain('stays with the property');
     expect(html).not.toContain('The loan record lists a');
     expect(html).not.toContain('NaN');
+  });
+
+  it('estimates income for each year, including the years after the loan is paid off', async () => {
+    const html = await page(roleEnv('admin'), 'section=property&page=debt');
+    expect(html).toContain('Estimated income by year');
+    expect(html).toContain('Left for the church');
+    expect(html).toContain('(loan paid off)');
+    expect(html).not.toContain('NaN');
+  });
+
+  it('draws the recorded mortgage balances ahead of the projection', () => {
+    const html = renderPropertyPage('debt', {
+      propertyDebt: { ok: true, debt: LIVE_DEBT },
+      propertyValuation: { source: 'fixture' },
+      propertyMortgageHistory: [{ fiscalYear: 2024, mortgageCents: 32117500, propertyCents: 0 }, { fiscalYear: 2025, mortgageCents: 29519500, propertyCents: 0 }],
+      searchParams: new URLSearchParams('section=property&page=debt'),
+    });
+    expect(html).toContain('Recorded balance');
+    expect(html).toContain('Recorded balances to date, then a projection');
   });
 
   it('flags a reported payment that differs from the loan record', async () => {

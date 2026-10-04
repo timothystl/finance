@@ -361,23 +361,51 @@ function renderForecastChart(rows) {
 
 // Mortgage balance at each year end, starting from today's balance; with an extra-principal
 // amount entered, a second line shows the faster payoff on the same axis.
-function renderDebtChart(projection, years, extra) {
+function renderDebtChart(projection, years, extra, history = []) {
   if (!years.length) return '';
+  // Year-end balances already on file come first, so the line shows where the loan has been as well
+  // as where it is going; "Now" joins the two. A recorded year the projection also covers is dropped.
+  const past = (history || []).filter((h) => String(h.fiscalYear) < years[0].year && h.mortgageCents != null);
+  const hasPast = past.length > 0;
   const startLabel = String(projection.currentBalanceAsOf || '').slice(0, 4) || 'Now';
-  const labels = [startLabel === years[0].year ? 'Now' : startLabel, ...years.map((y) => y.year)];
+  const labels = [...past.map((h) => String(h.fiscalYear)), startLabel === years[0].year ? 'Now' : startLabel, ...years.map((y) => y.year)];
   const fasterByYear = new Map((extra?.years || []).map((y) => [y.year, y.balanceCents]));
   const series = [{ label: 'On the current payment', color: CHART_COLORS.primary, area: !extra }];
-  if (extra) series.push({ label: `With ${formatCents(extra.extraCents)} extra a month`, color: CHART_COLORS.secondary });
+  if (hasPast) series.unshift({ label: 'Recorded balance', color: CHART_COLORS.secondary });
+  if (extra) series.push({ label: `With ${formatCents(extra.extraCents)} extra a month`, color: CHART_COLORS.secondary, dashed: true });
   const rows = labels.map((label, i) => {
-    const base = i === 0 ? projection.currentBalanceCents : years[i - 1].balanceCents;
-    if (!extra) return { label, values: [base] };
-    const faster = i === 0 ? projection.currentBalanceCents : (fasterByYear.has(years[i - 1].year) ? fasterByYear.get(years[i - 1].year) : 0);
-    return { label, values: [base, faster] };
+    const k = i - past.length;
+    if (k < 0) return { label, values: [past[i].mortgageCents, null, ...(extra ? [null] : [])] };
+    const base = k === 0 ? projection.currentBalanceCents : years[k - 1].balanceCents;
+    const faster = k === 0 ? projection.currentBalanceCents : (fasterByYear.has(years[k - 1].year) ? fasterByYear.get(years[k - 1].year) : 0);
+    return { label, values: [...(hasPast ? [k === 0 ? projection.currentBalanceCents : null] : []), base, ...(extra ? [faster] : [])] };
   });
-  return renderLineChart({ title: 'Mortgage balance at each year end', caption: 'Projection from the saved rate and payment, not a lender statement', series, rows });
+  return renderLineChart({ title: 'Mortgage balance at each year end', caption: `${hasPast ? 'Recorded balances to date, then a projection' : 'Projection'} from the saved rate and payment, not a lender statement`, series, rows });
 }
 
-function renderDebtOutlook(debt, searchParams) {
+// Estimated income for each year of the payoff table, and for the years after the loan is gone.
+// It holds today's rent roll and operating costs (the Valuation page) flat, so the only thing that
+// moves from year to year is the mortgage payment; the first, part-year row counts only the months
+// still to pay. Capital projects and reserve changes are not in it.
+function renderDebtRevenue(years, income, loan) {
+  if (!income || !years.length) return '';
+  const AFTER = 5;
+  const last = Number(years.at(-1).year);
+  const first = years[0];
+  const rows = [...years, ...Array.from({ length: AFTER }, (_, i) => ({ year: String(last + 1 + i), paymentCents: 0, count: 12, paidOff: true }))].map((y) => {
+    const months = y === first && first.count < 12 ? first.count : 12;
+    const rent = Math.round(income.rentCents * months / 12);
+    const noi = Math.round(income.noiCents * months / 12);
+    const left = noi - y.paymentCents;
+    const tag = y.paidOff ? ' <small>(loan paid off)</small>' : (months < 12 ? ` <small>(${months} month${months === 1 ? '' : 's'})</small>` : (y.year === String(last) && y.count < 12 ? ' <small>(final payments)</small>' : ''));
+    return `<tr><td>${y.year}${tag}</td><td>${formatCents(rent)}</td><td>${formatCents(noi)}</td><td>${formatCents(y.paymentCents)}</td><td><b>${formatSignedCents(left)}</b></td></tr>`;
+  }).join('');
+  return `${renderSectionHeading({ eyebrow: 'Estimate', heading: 'Estimated income by year' })}
+    ${renderTable({ head: ['Year', 'Rental income', 'After operating costs', 'Mortgage payments', 'Left for the church'], rows })}
+    <p><small>An estimate, not a budget: today’s rent roll and operating costs${income.live ? '' : ' (sample figures, since the live valuation did not answer)'} held flat every year, with the ${formatCents(loan.monthlyPaymentCents)} monthly payment taken out until the loan is paid off. Capital projects and reserve changes are not included.</small></p>`;
+}
+
+function renderDebtOutlook(debt, searchParams, history = [], income = null) {
   const { loan, activity, projection } = debt;
   const lastPayment = activity.at(-1);
   const mismatch = lastPayment && loan.monthlyPaymentCents != null && lastPayment.paymentCents !== loan.monthlyPaymentCents
@@ -400,9 +428,10 @@ function renderDebtOutlook(debt, searchParams) {
   }
   return `${mismatch}
     ${renderSectionHeading({ eyebrow: 'Projection', heading: 'Payoff by year' })}
-    ${renderDebtChart(projection, years, extraYears)}
+    ${renderDebtChart(projection, years, extraYears, history)}
     ${renderTable({ head: ['Year', 'Payments', 'Interest', 'Principal', 'Balance at year end'], rows: years.map((y) => `<tr><td>${y.year}${y.count < 12 ? ` <small>(${y.count} payment${y.count === 1 ? '' : 's'})</small>` : ''}</td><td>${formatCents(y.paymentCents)}</td><td>${formatCents(y.interestCents)}</td><td>${formatCents(y.principalCents)}</td><td>${formatCents(y.balanceCents)}</td></tr>`).join('') })}
     <p><small>After payoff, the ${formatCents(loan.monthlyPaymentCents)} monthly payment (${formatCents(loan.monthlyPaymentCents * 12)} a year) stays with the property.</small></p>
+    ${renderDebtRevenue(years, income, loan)}
     ${renderSectionHeading({ eyebrow: 'What if', heading: 'Paying extra principal' })}
     <form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">
       <label for="pd-extra">Extra each month ($)</label> <input id="pd-extra" name="extra" inputmode="decimal" value="${extraCents ? (extraCents / 100).toFixed(0) : ''}" placeholder="500"> <button type="submit" class="button-outline">Show</button></form>
@@ -431,7 +460,7 @@ function renderDebtPaidSoFar(currentBalanceCents, history) {
     </section>`;
 }
 
-function renderPropertyDebt(debtResult, canManage, status, message, searchParams, mortgageHistory = null) {
+function renderPropertyDebt(debtResult, canManage, status, message, searchParams, mortgageHistory = null, income = null) {
   if (!debtResult?.ok) return `<section aria-label="Property debt unavailable">${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Debt payoff & future', badge: 'Unavailable' })}<p class="status status-pending">The saved loan record could not be read. Existing property and loan records are unaffected.</p></section>`;
   const { loan, activity, projection } = debtResult.debt;
   const dollars = (cents) => cents == null ? '' : (cents / 100).toFixed(2);
@@ -453,7 +482,7 @@ function renderPropertyDebt(debtResult, canManage, status, message, searchParams
     ${renderDebtPaidSoFar(projection.currentBalanceCents ?? loan.balanceCents, mortgageHistory)}
     ${annualMismatch ? `<p class="status status-error">Review the saved annual debt service (${formatCents(loan.storedAnnualDebtServiceCents)}): it does not match 12 monthly payments (${formatCents(projection.derivedAnnualDebtServiceCents)}).</p>` : ''}
     ${activity.length ? renderTable({ head: ['Month', 'Payment', 'Interest', 'Principal', 'Balance after'], rows: activity.map((row) => `<tr><td>${escapeHtml(row.period)}</td><td>${formatCents(row.paymentCents)}</td><td>${formatCents(row.interestCents)}</td><td>${formatCents(row.principalCents)}</td><td>${formatCents(row.balanceAfterCents)}</td></tr>`).join('') }) : '<p><small>No complete monthly principal/interest rows occur after the saved balance date.</small></p>'}
-    ${renderDebtOutlook(debtResult.debt, searchParams)}
+    ${renderDebtOutlook(debtResult.debt, searchParams, mortgageHistory, income)}
     ${canManage ? `<form method="POST" action="/api/v1/connect-property-meta-write"><input type="hidden" name="debt_policy_form" value="1"><div class="grid form-grid">
       <div class="field"><label for="pd-lender">Lender</label><input id="pd-lender" name="lender" maxlength="120" value="${escapeHtml(loan.lender || '')}"></div>
       <div class="field"><label for="pd-balance">Confirmed balance ($)</label><input id="pd-balance" type="number" name="balance" min="0" step="0.01" value="${dollars(loan.balanceCents)}" required></div>
@@ -712,7 +741,14 @@ export function renderPropertyPage(pageId, {
       ${fallbackNote}
     </section>${canManagePropertyLedgers ? renderPropertyDistributionForm(propertyDistributionEntryStatus, propertyDistributionEntryMessage) : ''}`;
   }
-  if (pageId === 'debt') return renderPropertyDebt(propertyDebt, canManagePropertyLedgers, propertyDebtStatus, propertyDebtMessage, searchParams, propertyMortgageHistory);
+  if (pageId === 'debt') {
+    let income = null;
+    try {
+      const totals = buildPropertyValuationView(propertyValuation).totals;
+      if (Number.isFinite(totals.effectiveRentalIncomeCents) && Number.isFinite(totals.noiCents)) income = { rentCents: totals.effectiveRentalIncomeCents, noiCents: totals.noiCents, live: propertyValuation.source === 'live' };
+    } catch { income = null; }
+    return renderPropertyDebt(propertyDebt, canManagePropertyLedgers, propertyDebtStatus, propertyDebtMessage, searchParams, propertyMortgageHistory, income);
+  }
 
   // 'overview' (default) -- use the reconciled annual summary from the same live contract as
   // Operating results. Monthly live rows legitimately contain null expense/reserve fields, so
