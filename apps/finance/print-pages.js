@@ -9,6 +9,10 @@
 import { escapeHtml } from './render-helpers.js';
 import { BALANCE_STYLES } from './balance-pages.js';
 
+// The print page's CSP forbids inline script, so the button's handler is served as its own file.
+export const PRINT_BUTTON_JS = "document.getElementById('print-now').addEventListener('click', function () { window.print(); });\n";
+export const PRINT_PAGE_CSP = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
+
 export const PRINT_STYLES = `
   body.print-body { background: #eef0ec; margin: 0; color: #172019; font: 11pt/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   .print-toolbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; max-width: 8.5in; margin: 1rem auto 0; padding: 0 .5rem; }
@@ -55,7 +59,13 @@ export const PRINT_STYLES = `
   .print-doc .bp-print-tile { border: 1px solid #d9dfda; border-radius: .4rem; padding: .5rem .6rem; }
   .print-doc .bp-print-tile small, .print-doc .bp-print-tile span { display: block; font-size: 8pt; color: #555; }
   .print-doc .bp-print-tile strong { display: block; font-size: 13pt; }
+  .print-doc .bp-print-table { table-layout: auto; font-size: 8.5pt; }
+  .print-doc .bp-print-table th, .print-doc .bp-print-table td { padding: .25rem .3rem; }
+  .print-doc .bp-print-table th:first-child, .print-doc .bp-print-table td:first-child { width: 30%; overflow-wrap: anywhere; }
   .print-doc .bp-print-table th.n, .print-doc .bp-print-table td:not(:first-child) { text-align: right; white-space: nowrap; }
+  .print-doc .bp-print-table th.n { white-space: normal; }
+  .print-doc .bp-print-tiles { overflow-wrap: anywhere; }
+  .print-doc { overflow-x: hidden; }
   .print-doc .bp-print-group td { font-weight: 700; padding-top: .5rem; }
   .print-doc .bp-print-total td { font-weight: 700; border-top: 1px solid #999; }
   .print-doc .bp-print-total.is-net td { border-top: 2px solid #172019; }
@@ -121,7 +131,8 @@ export function renderPrintDocument({ documentTitle, backHref, contentHtml, rele
   <style>${PRINT_STYLES}${BALANCE_STYLES}</style>
 </head>
 <body class="print-body">
-  <div class="print-toolbar"><a href="${escapeHtml(backHref)}">← Back to Finance</a><button type="button" onclick="window.print()">Print / Save as PDF</button></div>
+  <div class="print-toolbar"><a href="${escapeHtml(backHref)}">← Back to Finance</a><button type="button" id="print-now">Print / Save as PDF</button></div>
+  <script src="/print/print.js" defer></script>
   <main class="print-doc">
     <div class="print-masthead"><img src="/assets/finance-mark.png" alt=""><div><div class="org">Timothy Lutheran Church · Finance</div><div class="meta">Prepared ${escapeHtml(preparedLabel(now))}${production ? '' : ' · staging data'}</div></div></div>
     ${contentHtml}

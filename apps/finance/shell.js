@@ -77,7 +77,7 @@ import { defaultLiveBudgetFiscalYear } from './finance-budget-client.js';
 import { FACILITIES_STYLES, renderFacilitiesPage } from './facilities-pages.js';
 import { SHELL_STYLES, collapseDuplicateHeading, identityInitials, renderSectionNav, renderViewingAs } from './shell-layout.js';
 import {
-  BOARD_PACKET_ITEMS, COVER_NOTE_MAX, printHref, renderBoardPacketPicker, renderPrintDocument, renderPrintFragment,
+  BOARD_PACKET_ITEMS, COVER_NOTE_MAX, PRINT_BUTTON_JS, PRINT_PAGE_CSP, printHref, renderBoardPacketPicker, renderPrintDocument, renderPrintFragment,
 } from './print-pages.js';
 import { buildFinancialHealthView, FINANCE_HEALTH_DECISIONS } from './health-view-model.js';
 import { buildChurchReportView, buildLiveChurchReportView, readSyntheticChurchReport, resolveChurchReport, resolveChurchTrend } from './church-report-service.js';
@@ -2110,6 +2110,11 @@ export default {
         headers: { 'Content-Type': 'text/javascript; charset=utf-8' },
       }, { cacheControl: 'private, max-age=3600' });
     }
+    if (route.id === 'print-button-asset') {
+      return response(request.method === 'HEAD' ? null : PRINT_BUTTON_JS, {
+        headers: { 'Content-Type': 'text/javascript; charset=utf-8' },
+      }, { cacheControl: 'private, max-age=3600' });
+    }
     if (route.id === 'tuition-api-v1') return handleTuitionApi(request, rawEnv, url);
     if (route.id === 'tuition-aid-legacy-page') {
       return response(null, { status: 302, headers: { Location: '/?section=tuition&page=planner' } });
@@ -3980,10 +3985,12 @@ export default {
         }
       }
       const leftOutNote = leftOut.length ? `<p class="print-foot">Not included because it could not be rendered for you: ${escapeHtml(leftOut.join('; '))}.</p>` : '';
-      return response(renderPrintDocument({
+      const packetResponse = response(renderPrintDocument({
         documentTitle: 'Board packet', backHref: '/print/board-packet',
         contentHtml: pieces.join('') + leftOutNote, release, production,
       }), html);
+      packetResponse.headers.set('Content-Security-Policy', PRINT_PAGE_CSP);
+      return packetResponse;
     }
 
     if (route.id === 'shell') {
@@ -4742,7 +4749,9 @@ export default {
         }), {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
-        if (plannerPage && !printMode) {
+        if (printMode && url.searchParams.get('fragment') !== '1') {
+          shellResponse.headers.set('Content-Security-Policy', PRINT_PAGE_CSP);
+        } else if (plannerPage && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', PLANNER_PAGE_CSP);
         } else if (section.id === 'planning' && effectivePageId === 'builder' && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);

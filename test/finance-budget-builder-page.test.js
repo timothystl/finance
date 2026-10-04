@@ -147,6 +147,12 @@ describe('Budget planner (Finance)', () => {
     expect(thisYear).toContain(`Fiscal Year ${FY - 1} Budget`);
     expect(thisYear).not.toContain('<th class="n">Change</th>');
     expect(thisYear).not.toContain('<div class="bp-watermark"');
+    const baseOnly = await (await get(makeEnv().env, '&view=qb&print=1&cols=bud,act')).text();
+    expect(baseOnly).toContain(`Fiscal Year ${FY - 1} Budget`);
+    expect(baseOnly).not.toContain(`Fiscal Year ${FY} Budget`);
+    expect(baseOnly).toContain(`<th class="n">FY${FY - 1} Budget</th>`);
+    expect(baseOnly).not.toContain(`FY${FY} Plan</th>`);
+    expect(baseOnly).not.toContain('% of budget</th>');
   });
 
   it('saves only the cells that changed, each to its own Connect contract', async () => {
