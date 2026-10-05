@@ -77,7 +77,7 @@ import { defaultLiveBudgetFiscalYear } from './finance-budget-client.js';
 import { FACILITIES_STYLES, renderFacilitiesPage } from './facilities-pages.js';
 import { SHELL_STYLES, collapseDuplicateHeading, identityInitials, renderSectionNav, renderViewingAs } from './shell-layout.js';
 import {
-  BOARD_PACKET_ITEMS, COVER_NOTE_MAX, PRINT_BUTTON_JS, PRINT_PAGE_CSP, printHref, renderBoardPacketPicker, renderPrintDocument, renderPrintFragment,
+  BOARD_PACKET_ITEMS, COVER_NOTE_MAX, DEFAULT_COVER_TEMPLATE, PRINT_BUTTON_JS, PRINT_PAGE_CSP, printHref, renderBoardPacketPicker, renderPrintDocument, renderPrintFragment,
 } from './print-pages.js';
 import { buildFinancialHealthView, FINANCE_HEALTH_DECISIONS } from './health-view-model.js';
 import { buildChurchReportView, buildLiveChurchReportView, readSyntheticChurchReport, resolveChurchReport, resolveChurchTrend } from './church-report-service.js';
@@ -181,6 +181,7 @@ import { ACQUISITION_STYLES, renderAcquisitionPage } from './property-acquisitio
 import { PROPERTY_CHART_STYLES } from './property-charts.js';
 import { renderCompensationPage } from './compensation-pages.js';
 import { renderPlanningPage } from './planning-pages.js';
+import { readCoverTemplate, saveCoverTemplate } from './board-packet-cover-service.js';
 import { renderAccountsPage } from './accounts-pages.js';
 import { renderChartsPage, renderFinancialMixRows } from './charts-pages.js';
 import { renderGiftEntryPage } from './gift-entry-pages.js';
@@ -3948,6 +3949,17 @@ export default {
     // reports. Every piece is rendered by the shell route itself (print=1&fragment=1) with the
     // viewer's own headers, so each keeps its own permission check; a refused or failed piece is
     // named as left out rather than silently dropped.
+    if (route.id === 'board-packet-cover-save-v1') {
+      const roleResult = await fetchVerifiedRole(env, request.headers.get('Cf-Access-Jwt-Assertion') || '');
+      const canEdit = roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
+      if (!canEdit) return response('<!doctype html><p>Only finance editors can save the cover letter template.</p>', { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      let form;
+      try { form = await request.formData(); } catch { form = null; }
+      const saved = await saveCoverTemplate(env.FINANCE_DB, form && form.get('note'));
+      if (!saved.ok) return response(`<!doctype html><p>${escapeHtml(saved.error)}</p>`, { status: saved.status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return response(null, { status: 303, headers: { Location: '/print/board-packet?saved=1' } });
+    }
+
     if (route.id === 'print-board-packet') {
       if (request.method === 'HEAD') return response(null, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       const html = { headers: { 'Content-Type': 'text/html; charset=utf-8' } };
@@ -3962,7 +3974,12 @@ export default {
       const production = metadata.environment === 'production';
       const include = url.searchParams.getAll('include').filter((key) => allowed.some((item) => item.key === key));
       if (!include.length) {
-        return response(renderBoardPacketPicker({ items: allowed, release, production, message: url.searchParams.has('include') ? 'Choose at least one report you have access to.' : '' }), html);
+        const coverTemplate = (await readCoverTemplate(env.FINANCE_DB)) ?? DEFAULT_COVER_TEMPLATE;
+        const canSaveTemplate = !!env.FINANCE_DB && roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
+        return response(renderBoardPacketPicker({
+          items: allowed, release, production, coverTemplate, canSaveTemplate, templateSaved: url.searchParams.get('saved') === '1',
+          message: url.searchParams.has('include') ? 'Choose at least one report you have access to.' : '',
+        }), html);
       }
       const note = String(url.searchParams.get('note') || '').slice(0, COVER_NOTE_MAX).trim();
       const renderPiece = async (section, page) => {

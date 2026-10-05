@@ -352,6 +352,8 @@ const ROUTES = [
   // Board packet print (print-pages.js): a picker, then a composed print document. It renders other
   // shell pages internally with the viewer's own headers, so it adds no data source of its own.
   { id: 'print-board-packet', paths: ['/print/board-packet'], methods: READ_METHODS, dataSource: 'none' },
+  // Saves the board packet's monthly cover-letter template to Finance's own finance_settings row.
+  { id: 'board-packet-cover-save-v1', paths: ['/print/board-packet/cover'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true },
   { id: 'qb-connect-v1', paths: ['/api/v1/qb/connect'], methods: Object.freeze(['GET']), dataSource: 'quickbooks-oauth', writer: true, contract: 'finance.quickbooks-connect.v1' },
   { id: 'qb-callback-v1', paths: ['/api/v1/qb/callback'], methods: Object.freeze(['GET']), dataSource: 'quickbooks-oauth', writer: true, contract: 'finance.quickbooks-callback.v1' },
   { id: 'qb-disconnect-v1', paths: ['/api/v1/qb/disconnect'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.quickbooks-disconnect.v1' },
