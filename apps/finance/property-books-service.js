@@ -189,12 +189,44 @@ async function removeBankRec(db, form) {
   return {};
 }
 
+// The yearly rent increase the Debt page's income estimate uses. One number kept in finance_settings
+// so the page opens with it filled in; blank clears it. Whole range the page accepts: -10% to 15%.
+export const RENT_GROWTH_KEY = 'finance_property_rent_growth_pct';
+export const RENT_GROWTH_MIN = -10;
+export const RENT_GROWTH_MAX = 15;
+
+export function parseRentGrowth(value) {
+  const raw = String(value ?? '').replace(/[%\s]/g, '');
+  if (raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.min(RENT_GROWTH_MAX, Math.max(RENT_GROWTH_MIN, Math.round(n * 100) / 100)) : null;
+}
+
+export async function readRentGrowth(db) {
+  try {
+    const row = await db.prepare('SELECT value FROM finance_settings WHERE key = ?').bind(RENT_GROWTH_KEY).first();
+    return parseRentGrowth(row?.value);
+  } catch {
+    return null;
+  }
+}
+
+async function saveRentGrowth(db, form) {
+  const raw = String(form.rent_growth ?? '').replace(/[%\s]/g, '');
+  if (raw !== '' && !Number.isFinite(Number(raw))) throw new FormValidationError('Enter the yearly rent increase as a number, like 3.');
+  const pct = parseRentGrowth(raw);
+  if (pct === null) await db.prepare('DELETE FROM finance_settings WHERE key = ?').bind(RENT_GROWTH_KEY).run();
+  else await db.prepare('INSERT INTO finance_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(RENT_GROWTH_KEY, String(pct)).run();
+  return {};
+}
+
 export const PROPERTY_BOOKS_WRITERS = Object.freeze({
   'property-receivable-save-v1': { run: saveReceivable, page: 'receivables' },
   'property-receivable-import-v1': { run: importReceivables, page: 'receivables' },
   'property-receivable-remove-v1': { run: removeReceivable, page: 'receivables' },
   'property-bank-rec-save-v1': { run: saveBankRec, page: 'bank-rec' },
   'property-bank-rec-remove-v1': { run: removeBankRec, page: 'bank-rec' },
+  'property-rent-growth-save-v1': { run: saveRentGrowth, page: 'debt' },
 });
 
 export function canEditPropertyBooks(roleResult) {

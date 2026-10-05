@@ -337,6 +337,23 @@ describe('Commercial Property debt payoff', () => {
     expect(bad).not.toContain('NaN');
   });
 
+  it('opens with the remembered rent increase, and lets only managers save one', () => {
+    const valuation = {
+      source: 'live', assumptions: { utility_reimbursement_cents: 0, vacancy_rate_pct: 0.05, management_fee_pct: 0, cap_rate: 0.08 },
+      rentRoll: [{ annual_rent_cents: 1938000 }], operatingCosts: [{ annual_cost_cents: 0 }],
+    };
+    const args = { propertyDebt: { ok: true, debt: LIVE_DEBT }, propertyValuation: valuation, propertyRentGrowthSaved: 4, searchParams: new URLSearchParams('section=property&page=debt') };
+    const manager = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: true });
+    expect(manager).toContain('Remembered for everyone: 4% a year.');
+    expect(manager).toContain('value="4"');
+    expect(manager).toContain('formaction="/api/v1/property/rent-growth-save"');
+    const viewer = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: false });
+    expect(viewer).toContain('Remembered for everyone: 4% a year.');
+    expect(viewer).not.toContain('rent-growth-save');
+    const typed = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: true, searchParams: new URLSearchParams('section=property&page=debt&rent_growth=0') });
+    expect(typed).toContain('you are looking at 0% without saving it');
+  });
+
   it('draws the recorded mortgage balances ahead of the projection', () => {
     const html = renderPropertyPage('debt', {
       propertyDebt: { ok: true, debt: LIVE_DEBT },

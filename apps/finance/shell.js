@@ -42,7 +42,7 @@ import { fetchFinanceClassification } from './finance-classification-client.js';
 import { fetchFinancePropertyDebt } from './finance-property-debt-client.js';
 import { fetchFinancePropertyPolicy } from './finance-property-policy-client.js';
 import { resolvePageRole } from './role-cache.js';
-import { PROPERTY_BOOKS_WRITERS, canEditPropertyBooks, readPropertyBooks } from './property-books-service.js';
+import { PROPERTY_BOOKS_WRITERS, canEditPropertyBooks, readPropertyBooks, readRentGrowth } from './property-books-service.js';
 import { PROPERTY_BOOKS_STYLES, renderBankRecPage, renderReceivablesPage } from './property-books-pages.js';
 import { seedPropertyBooksFromReports } from './property-books-seed.js';
 import { renderClassificationEditors } from './classification-pages.js';
@@ -1307,7 +1307,7 @@ function renderSectionBody(ctx) {
     propertyRepairRemoveStatus, propertyRepairRemoveMessage,
     propertyMetaEntryStatus, propertyMetaEntryMessage,
     propertyReservePolicyStatus, propertyReservePolicyMessage, propertyCapitalPolicyStatus, propertyCapitalPolicyMessage,
-    propertyDebtStatus, propertyDebtMessage, propertyMortgageHistory,
+    propertyDebtStatus, propertyDebtMessage, propertyMortgageHistory, propertyRentGrowthSaved,
     propertyBudgetImportStatus, propertyBudgetImportMessage,
     propertyMonthlyImportCsvStatus, propertyMonthlyImportCsvMessage,
     classificationRevenueStatus, classificationRevenueMessage, classificationExpenseStatus, classificationExpenseMessage,
@@ -1720,7 +1720,7 @@ function renderSectionBody(ctx) {
       propertyRepairRemoveStatus, propertyRepairRemoveMessage,
       propertyMetaEntryStatus, propertyMetaEntryMessage,
       propertyReservePolicyStatus, propertyReservePolicyMessage, propertyCapitalPolicyStatus, propertyCapitalPolicyMessage,
-      propertyDebtStatus, propertyDebtMessage, searchParams: ctx.searchParams, propertyMortgageHistory,
+      propertyDebtStatus, propertyDebtMessage, searchParams: ctx.searchParams, propertyMortgageHistory, propertyRentGrowthSaved,
       propertyBudgetImportStatus, propertyBudgetImportMessage,
       propertyMonthlyImportCsvStatus, propertyMonthlyImportCsvMessage,
     });
@@ -4250,6 +4250,8 @@ export default {
           }) : null;
         let propertyDebt = section.id === 'property' && ['debt', 'board-summary'].includes(resolveFinancePage(section, pageId).id)
           ? fetchFinancePropertyDebt(env) : null;
+        let propertyRentGrowth = section.id === 'property' && resolveFinancePage(section, pageId).id === 'debt' && env.FINANCE_DB
+          ? readRentGrowth(env.FINANCE_DB) : null;
         // The Debt page's "Paid down so far": year-end mortgage from each balance sheet on file, the
         // same history the Balance Sheet's Property section shows. Never throws.
         const propertyMortgageHistoryLoad = section.id === 'property' && resolveFinancePage(section, pageId).id === 'debt'
@@ -4714,8 +4716,7 @@ export default {
         // costs its own timeout once, not once per section read in turn.
         [summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear] = await Promise.all([summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear]);
         const balancePriorYear = await balancePriorYearLoad;
-        const attendance = section.id === 'attendance' ? await fetchLiveAttendanceSummary(env, defaultLiveChurchReportFiscalYear()) : null;
-        const [balancePropertyValue, balanceMortgageHistory, propertyMortgageHistory] = await Promise.all([balancePropertyValueLoad, balanceMortgageHistoryLoad, propertyMortgageHistoryLoad]);
+        const [balancePropertyValue, balanceMortgageHistory, propertyMortgageHistory, propertyRentGrowthSaved] = await Promise.all([balancePropertyValueLoad, balanceMortgageHistoryLoad, propertyMortgageHistoryLoad, propertyRentGrowth]);
         const printMode = url.searchParams.get('print') === '1';
         // The Planner is the one Finance page that runs script (its own, from this Worker only).
         const plannerPage = (section.id === 'compensation' && effectivePageId === 'planner') || section.id === 'tuition';
@@ -4764,7 +4765,7 @@ export default {
           propertyRepairRemoveStatus, propertyRepairRemoveMessage,
           propertyMetaEntryStatus, propertyMetaEntryMessage,
           propertyReservePolicyStatus, propertyReservePolicyMessage, propertyCapitalPolicyStatus, propertyCapitalPolicyMessage,
-          propertyDebtStatus, propertyDebtMessage, propertyMortgageHistory,
+          propertyDebtStatus, propertyDebtMessage, propertyMortgageHistory, propertyRentGrowthSaved,
           propertyBudgetImportStatus, propertyBudgetImportMessage,
           propertyMonthlyImportCsvStatus, propertyMonthlyImportCsvMessage,
         }), {
