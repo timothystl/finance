@@ -305,6 +305,18 @@ describe('Commercial Property debt payoff', () => {
     expect(html).not.toContain('NaN');
   });
 
+  it('applies a yearly rent increase to the estimated income', async () => {
+    const flat = await page(roleEnv('admin'), 'section=property&page=debt');
+    const grown = await page(roleEnv('admin'), 'section=property&page=debt&rent_growth=3');
+    expect(flat).toContain('name="rent_growth"');
+    expect(grown).toContain('value="3"');
+    expect(grown).toContain('rent rising 3% a year');
+    expect(grown).not.toContain('NaN');
+    expect(grown).not.toBe(flat);
+    const bad = await page(roleEnv('admin'), 'section=property&page=debt&rent_growth=abc');
+    expect(bad).not.toContain('NaN');
+  });
+
   it('draws the recorded mortgage balances ahead of the projection', () => {
     const html = renderPropertyPage('debt', {
       propertyDebt: { ok: true, debt: LIVE_DEBT },
