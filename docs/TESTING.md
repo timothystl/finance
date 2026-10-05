@@ -51,5 +51,3 @@ start no charges. Browser checks use synthetic local responses. The recovery dri
   matching `build.mjs` (in that folder) and commit the generated bundle.
 - Documentation-only changes need no rebuild; review the diff and links.
 - `scripts/prepare-d1-import.py` (added after the split) is exercised only by the recovery drill.
-- `.github/scripts/check-deploy-version.js` and `.github/scripts/resolve-auto-merge-conflicts.js` are Connect leftovers
-  that no Finance workflow calls.
