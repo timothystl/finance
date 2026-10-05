@@ -119,10 +119,11 @@ Grace and peace,
 Pastor Andrew`;
 
 // The print link a page head offers: the same page, with print=1.
-export function printHref(searchParams) {
+export function printHref(searchParams, extra = {}) {
   const params = new URLSearchParams(searchParams || '');
   for (const key of ['status', 'reason', 'message', 'edit', 'qb', 'budgets', 'fragment']) params.delete(key);
   params.set('print', '1');
+  for (const [key, value] of Object.entries(extra)) params.set(key, value);
   return `/?${params.toString()}`;
 }
 
@@ -172,6 +173,10 @@ export function renderBoardPacketPicker({ items, release, production, message = 
     ${message ? `<p class="status status-error">${escapeHtml(message)}</p>` : ''}
     <form method="GET" action="/print/board-packet">
       <fieldset><legend>Reports</legend>${boxes || '<p>No reports are available to your role.</p>'}</fieldset>
+      ${items.some((item) => item.key === 'budget') ? `<fieldset><legend>Budget</legend>
+        <label><input type="radio" name="budget_year" value="thisyear" checked> This year only</label>
+        <label><input type="radio" name="budget_year" value="plan"> Next year’s plan, with this year beside it</label>
+      </fieldset>` : ''}
       <fieldset><legend>Cover letter</legend>
         ${templateSaved ? '<p class="status">Template saved. It will appear here next month.</p>' : ''}
         <textarea name="note" maxlength="${COVER_NOTE_MAX}" aria-label="Cover letter">${escapeHtml(coverTemplate)}</textarea>

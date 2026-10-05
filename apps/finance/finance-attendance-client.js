@@ -2,9 +2,7 @@ import { acceptAttendanceSummaryV1 } from '../../contracts/validators/attendance
 
 const REQUEST_TIMEOUT_MS = 4000;
 
-// connect.attendance-summary.v1: anonymous worship attendance (counts only), answered by Connect.
-// The page says plainly when it cannot be read rather than showing blank or zero figures.
-export async function fetchLiveAttendanceSummary(env, fiscalYear) {
+async function fetchYear(env, fiscalYear) {
   const binding = env.CONNECT_SERVICE;
   const key = env.FINANCE_CONTRACT_API_KEY;
   if (!binding || !key) return { ok: false, reason: 'not_configured' };
@@ -22,4 +20,14 @@ export async function fetchLiveAttendanceSummary(env, fiscalYear) {
   try { payload = await response.json(); } catch { return { ok: false, reason: 'invalid_json' }; }
   try { return { ok: true, attendance: acceptAttendanceSummaryV1(payload) }; }
   catch (error) { return { ok: false, reason: 'contract_validation_failed', detail: error?.message || String(error) }; }
+}
+
+// connect.attendance-summary.v1: anonymous worship attendance (counts only), answered by Connect.
+// The year asked for is required; the year before it is read too so rolling twelve-month and
+// 52-week views can cross the new year, and is simply left out (`prior: null`) if it cannot be read.
+// The page says plainly when the main year cannot be read rather than showing blank or zero figures.
+export async function fetchLiveAttendanceSummary(env, fiscalYear) {
+  const [current, prior] = await Promise.all([fetchYear(env, fiscalYear), fetchYear(env, fiscalYear - 1)]);
+  if (!current.ok) return current;
+  return { ok: true, attendance: current.attendance, prior: prior.ok ? prior.attendance : null };
 }

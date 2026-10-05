@@ -1960,7 +1960,7 @@ function renderShell(ctx) {
       <div class="sidebar-foot">${accountingViewer(roleResult) ? '<a href="/accounting">Familiar accounting workspace</a><br><br>' : ''}${production ? 'Production · Timothy Lutheran<br>Access verified through Connect' : 'Isolated staging environment<br>Test data may be present'}</div>
     </aside>
     <main>
-      <div class="page-head"><div><div class="eyebrow">${escapeHtml(group)}</div><h1 class="page-title">${escapeHtml(pageTitle)}</h1></div>${section.id === 'health' ? renderHealthViewToggle(resolveHealthView(ctx.healthView), { councilPreview }) : ''}<a class="print-link" href="${escapeHtml(printHref(ctx.searchParams))}">Print</a>${section.id === 'packet' ? ' <a class="print-link" href="/print/board-packet">Print board packet</a>' : ''}</div>
+      <div class="page-head"><div><div class="eyebrow">${escapeHtml(group)}</div><h1 class="page-title">${escapeHtml(pageTitle)}</h1></div>${section.id === 'health' ? renderHealthViewToggle(resolveHealthView(ctx.healthView), { councilPreview }) : ''}<a class="print-link" href="${escapeHtml(printHref(ctx.searchParams))}">Print</a>${section.id === 'planning' && page.id === 'builder' ? ` <a class="print-link" href="${escapeHtml(printHref(ctx.searchParams, { print_mode: 'thisyear' }))}">Print this year only</a>` : ''}${section.id === 'packet' ? ' <a class="print-link" href="/print/board-packet">Print board packet</a>' : ''}</div>
       ${roleNotice}
       ${councilNotice}
       ${sectionBody}
@@ -3999,7 +3999,7 @@ export default {
       const leftOut = [];
       for (const item of BOARD_PACKET_ITEMS.filter((entry) => include.includes(entry.key))) {
         for (const page of item.pages) {
-          const piece = await renderPiece(item.section, page, item.pageParams?.[page]);
+          const piece = await renderPiece(item.section, page, item.key === 'budget' && url.searchParams.get('budget_year') === 'plan' ? {} : item.pageParams?.[page]);
           if (piece) pieces.push(`<div class="print-newpage">${piece}</div>`);
           else leftOut.push(`${item.label} (${page})`);
         }

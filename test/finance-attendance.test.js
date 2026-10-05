@@ -47,8 +47,11 @@ describe('attendance pages', () => {
     const { status, html } = await get('/?section=attendance&page=overview');
     expect(status).toBe(200);
     expect(html).toContain('Worship attendance, FY2026');
-    expect(html).toContain('Attendance by weekend');
-    expect(html).toContain('Average attendance per weekend, by month');
+    expect(html).toContain('Sundays this year');
+    expect(html).toContain('Monthly rhythm');
+    expect(html).toContain('Year over year');
+    expect(html).toContain('Recent Sundays');
+    expect(html).toContain('Latest weekend');
     expect(html).toContain('Oct 4');
     expect(html).not.toMatch(/head ?count/i);
     expect((html.match(/<svg /g) || []).length).toBeGreaterThanOrEqual(2);
@@ -59,6 +62,7 @@ describe('attendance pages', () => {
     expect(html).toContain('Attendance, multi-year');
     expect(html).toContain('2024');
     expect(html).toContain('2026');
+    expect(html).toContain('Year-over-year trend');
   });
 
   it('says plainly when Connect cannot be read instead of showing zeros', async () => {

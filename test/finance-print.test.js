@@ -130,6 +130,12 @@ describe('board packet content', () => {
     expect(item.pageParams.builder).toEqual({ print_mode: 'thisyear' });
   });
 
+  it('lets the picker choose this year only (default) or next year’s plan for the Budget', async () => {
+    const { html } = await get('/print/board-packet', env({ role: 'admin', permissions: { finance: 'edit', budget: 'edit' } }));
+    expect(html).toContain('name="budget_year" value="thisyear" checked');
+    expect(html).toContain('name="budget_year" value="plan"');
+  });
+
   it('keeps Balance Sheet pages in the print even though they hold a year picker form', () => {
     expect(PRINT_STYLES).toContain('section:not(.keep-in-print):has(> form)');
     for (const label of ['Balance Sheet position', 'Balance Sheet account detail', 'Balance Sheet multi-year position']) {
