@@ -637,7 +637,7 @@ export function renderBalancePage(pageId, {
         renderNetAssetsByYear(detailYears),
       ].join('')
       : '';
-    return `<section class="report" aria-label="Balance Sheet multi-year position">
+    return `<section class="report keep-in-print" aria-label="Balance Sheet multi-year position">
       ${renderSectionHeading({ eyebrow: 'Balance Sheet', heading: 'Multi-year financial position', badge: trendBadge })}
       ${renderRangeControls(isLiveTrend ? selection : null, controlYears)}
       ${sections}
@@ -663,7 +663,7 @@ export function renderBalancePage(pageId, {
   if (pageId === 'account-detail') {
     if (!isLive) {
       const rows = renderBalanceRows([...report.assets, ...report.liabilities, ...report.equity]);
-      return `<section class="report" aria-label="Balance Sheet account detail">
+      return `<section class="report keep-in-print" aria-label="Balance Sheet account detail">
       ${renderSectionHeading({ eyebrow: 'Balance Sheet', heading: `Account detail as of ${escapeHtml(report.asOfDate)}`, badge })}
       ${renderTable({ head: ['Classification', 'Account', 'Balance'], rows })}
       ${fallbackNote}
@@ -671,7 +671,7 @@ export function renderBalancePage(pageId, {
     }
     const zeroHidden = hideZero ? '' : '<input type="hidden" name="zero" value="show">';
     const detail = emptyYear ? null : renderBalanceDetailTree(balanceSheet.accounts, { hideZero });
-    return `<section class="report" aria-label="Balance Sheet account detail">
+    return `<section class="report keep-in-print" aria-label="Balance Sheet account detail">
       ${renderSectionHeading({ eyebrow: 'Balance Sheet', heading: `Account detail as of ${escapeHtml(asOfLabel)}`, badge })}
       ${renderYearControls('account-detail', selection, fiscalYear, { extraHidden: zeroHidden })}
       ${emptyYear ? emptyNote : `${renderBalanceCheck(report.totals.equationDifferenceCents)}
@@ -697,7 +697,7 @@ export function renderBalancePage(pageId, {
     ${renderBalanceCheck(report.totals.equationDifferenceCents)}`}
     ${isLive && printMode ? `${panelHeading('Full account detail', hideZero ? 'Zero-balance lines are hidden.' : '')}${renderBalanceDetailTree(balanceSheet.accounts, { hideZero }).html}` : ''}
     <p class="no-print">See <a href="${escapeHtml(balanceHref('account-detail', isLive ? { fiscal_year: fiscalYear } : {}))}">Account detail</a> and <a href="${escapeHtml(balanceHref('multi-year'))}">Multi-year position</a> for the full breakdown behind these totals.</p>`;
-  return `<section class="report" aria-label="Balance Sheet position">
+  return `<section class="report keep-in-print" aria-label="Balance Sheet position">
     ${renderSectionHeading({ eyebrow: 'Balance Sheet', heading: `Financial position as of ${escapeHtml(isLive ? asOfLabel : report.asOfDate)}`, badge })}
     ${isLive ? renderYearControls('position', selection, fiscalYear) : ''}
     ${positionBody}

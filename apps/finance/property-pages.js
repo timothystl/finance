@@ -387,9 +387,9 @@ function renderDebtChart(projection, years, extra, history = []) {
 // It holds today's rent roll and operating costs (the Valuation page) flat, so the only thing that
 // moves from year to year is the mortgage payment; the first, part-year row counts only the months
 // still to pay. Capital projects and reserve changes are not in it.
-function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0) {
+function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0, { after = 5, withForm = true, heading = 'Estimated income by year' } = {}) {
   if (!income || !years.length) return '';
-  const AFTER = 5;
+  const AFTER = after;
   const last = Number(years.at(-1).year);
   const first = years[0];
   const rows = [...years, ...Array.from({ length: AFTER }, (_, i) => ({ year: String(last + 1 + i), paymentCents: 0, count: 12, paidOff: true }))].map((y) => {
@@ -405,8 +405,8 @@ function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0) {
   }).join('');
   const form = `<form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">${extraCents ? `<input type="hidden" name="extra" value="${(extraCents / 100).toFixed(0)}">` : ''}
       <label for="pd-growth">Yearly rent increase (%)</label> <input id="pd-growth" name="rent_growth" inputmode="decimal" value="${growthPct ? growthPct : ''}" placeholder="0"> <button type="submit" class="button-outline">Show</button></form>`;
-  return `${renderSectionHeading({ eyebrow: 'Estimate', heading: 'Estimated income by year' })}
-    ${form}
+  return `${renderSectionHeading({ eyebrow: 'Estimate', heading })}
+    ${withForm ? form : ''}
     ${renderTable({ head: ['Year', 'Rental income', 'After operating costs', 'Mortgage payments', 'Left for the church'], rows })}
     <p><small>An estimate, not a budget: today’s rent roll and operating costs${income.live ? '' : ' (sample figures, since the live valuation did not answer)'}${growthPct ? `, with rent rising ${growthPct}% a year and operating costs held flat,` : ' held flat every year,'} and the ${formatCents(loan.monthlyPaymentCents)} monthly payment taken out until the loan is paid off. Capital projects and reserve changes are not included.</small></p>`;
 }
@@ -468,6 +468,45 @@ function renderDebtPaidSoFar(currentBalanceCents, history) {
     </section>`;
 }
 
+
+// Board summary: the very high-level Commercial Property page for the board packet. Operating
+// income, expenses and net revenue for the latest reporting year, the reserve, the projected
+// payoff date, and projected income by year through the year after the loan is paid off. No forms,
+// no editing; every figure comes from the same live reads as the detailed pages, and a figure that
+// cannot be read is said to be unavailable rather than shown as zero.
+function renderPropertyBoardSummary({ propertyReportLive, propertyReservesLive, propertyDebt, propertyValuation }) {
+  const annual = propertyReportLive?.source === 'live' && Array.isArray(propertyReportLive.annualSummary)
+    ? propertyReportLive.annualSummary.at(-1) : null;
+  const reserveRows = propertyReservesLive?.source === 'live' && Array.isArray(propertyReservesLive.rows) ? propertyReservesLive.rows : [];
+  const reserveMonth = reserveRows.reduce((max, r) => (r.report_month > max ? r.report_month : max), '');
+  const reserveCents = reserveMonth
+    ? reserveRows.filter((r) => r.report_month === reserveMonth).reduce((sum, r) => sum + (r.reserve_after_cents || 0), 0) : null;
+  const debt = propertyDebt?.ok ? propertyDebt.debt : null;
+  const projection = debt?.projection?.status === 'ready' ? debt.projection : null;
+  const kpis = renderKpiCards([
+    { label: annual ? `Revenue, ${annual.year}` : 'Revenue', value: annual ? formatCents(annual.totalRevenueCents) : 'Unavailable', hint: annual ? `Average occupancy ${(annual.avgOccupancyPct * 100).toFixed(0)}%` : 'Operating results could not be read' },
+    { label: annual ? `Expenses, ${annual.year}` : 'Expenses', value: annual ? formatCents(annual.totalExpensesCents) : 'Unavailable', hint: '' },
+    { label: 'Net revenue', value: annual ? formatSignedCents(annual.netIncomeCents) : 'Unavailable', hint: annual ? 'Revenue less expenses' : '' },
+    { label: 'Reserve', value: reserveCents == null ? 'Unavailable' : formatCents(reserveCents), hint: reserveMonth ? `As of ${escapeHtml(reserveMonth)}` : 'No reserve month on file' },
+    { label: 'Mortgage paid off', value: projection ? escapeHtml(projection.payoffPeriod || 'Unavailable') : 'Unavailable', hint: projection ? `${formatCents(projection.currentBalanceCents)} left, ${projection.monthsRemaining} months` : 'Loan terms are incomplete or could not be read' },
+  ]);
+  let income = null;
+  try {
+    const totals = buildPropertyValuationView(propertyValuation).totals;
+    if (Number.isFinite(totals.effectiveRentalIncomeCents) && Number.isFinite(totals.noiCents)) income = { rentCents: totals.effectiveRentalIncomeCents, noiCents: totals.noiCents, live: propertyValuation.source === 'live' };
+  } catch { income = null; }
+  let projected = '<p class="status status-pending">Projected income needs the loan terms and the rent roll; one of them could not be read.</p>';
+  if (projection && income) {
+    const terms = { balanceCents: projection.currentBalanceCents, annualRate: debt.loan.interestRatePct, paymentCents: debt.loan.monthlyPaymentCents, startMonth: nextPeriod(String(projection.currentBalanceAsOf).slice(0, 7)) };
+    projected = renderDebtRevenue(byYear(amortize(terms).months), income, debt.loan, 0, 0, { after: 1, withForm: false, heading: 'Projected income by year' });
+  }
+  return `<section class="report" aria-label="Commercial Property board summary">
+    ${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Commercial Property, board summary', badge: annual ? 'Live from Connect' : 'Partial data' })}
+    ${kpis}
+    ${projected}
+  </section>`;
+}
+
 function renderPropertyDebt(debtResult, canManage, status, message, searchParams, mortgageHistory = null, income = null) {
   if (!debtResult?.ok) return `<section aria-label="Property debt unavailable">${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Debt payoff & future', badge: 'Unavailable' })}<p class="status status-pending">The saved loan record could not be read. Existing property and loan records are unaffected.</p></section>`;
   const { loan, activity, projection } = debtResult.debt;
@@ -478,7 +517,7 @@ function renderPropertyDebt(debtResult, canManage, status, message, searchParams
     : projection.status === 'payment_too_low' ? 'Payment does not cover monthly interest' : 'Complete the loan terms to calculate payoff';
   const annualMismatch = loan.storedAnnualDebtServiceCents != null && projection.derivedAnnualDebtServiceCents != null
     && Math.abs(loan.storedAnnualDebtServiceCents - projection.derivedAnnualDebtServiceCents) > 100;
-  return `<section class="report" aria-label="Commercial Property debt payoff">
+  return `<section class="report keep-in-print" aria-label="Commercial Property debt payoff">
     ${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Debt payoff & future', badge: 'Live from Connect' })}
     ${policyStatus(status, message)}
     ${renderKpiCards([
@@ -749,6 +788,7 @@ export function renderPropertyPage(pageId, {
       ${fallbackNote}
     </section>${canManagePropertyLedgers ? renderPropertyDistributionForm(propertyDistributionEntryStatus, propertyDistributionEntryMessage) : ''}`;
   }
+  if (pageId === 'board-summary') return renderPropertyBoardSummary({ propertyReportLive, propertyReservesLive, propertyDebt, propertyValuation });
   if (pageId === 'debt') {
     let income = null;
     try {
