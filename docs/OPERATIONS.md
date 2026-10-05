@@ -30,7 +30,7 @@ Merging to `main` does not deploy. Pull requests touching Finance code run
 2. Dispatch **Deploy Finance Production** (`deploy-finance.yml`) with the exact tested full `main`
    SHA (`expected_sha`) and a real `reason`. It confirms the SHA is on main, refuses a placeholder
    database ID, reruns the production validation, creates the Facilities bucket only if missing,
-   deploys with `RELEASE_SHA` set, and writes a deployment summary.
+   deploys with `RELEASE_SHA` and `RELEASE_NUMBER` (the workflow run number, which only grows) set, and writes a deployment summary. The page header shows `v0.1.0-alpha.<RELEASE_NUMBER>`, so a release that went live is visible on screen.
 3. Confirm: the workflow run completed, and (signed in through Access) `/health` reports the
    same `releaseSha`. A green build is not proof of data correctness or staff acceptance.
 
