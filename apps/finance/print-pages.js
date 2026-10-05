@@ -45,7 +45,7 @@ export const PRINT_STYLES = `
   .print-doc .status-error, .print-doc .unavailable .status { color: #8a2b1e; }
   .print-doc td:last-child:empty, .print-doc th:last-child:empty { display: none; }
   .print-doc form, .print-doc button, .print-doc .no-print, .print-doc .notice,
-  .print-doc section:has(> form), .print-doc a[href*="edit="] { display: none !important; }
+  .print-doc section:not(.keep-in-print):has(> form), .print-doc a[href*="edit="] { display: none !important; }
   .print-doc a { color: inherit; text-decoration: none; }
   .print-doc td.num, .print-doc th.num { text-align: right; white-space: nowrap; }
   .print-doc tr.total td { border-top: 1.5px solid #555; font-weight: 600; }
@@ -95,8 +95,8 @@ export const BOARD_PACKET_ITEMS = Object.freeze([
   { key: 'attendance', label: 'Attendance (this year and multi-year)', section: 'attendance', pages: ['overview', 'trend'] },
   { key: 'balance', label: 'Balance Sheet (position, account detail, and multi-year position)', section: 'balance', pages: ['position', 'account-detail', 'multi-year'] },
   { key: 'daycare', label: 'Daycare Report (overview and budget comparison)', section: 'daycare', pages: ['overview', 'budget-comparison'] },
-  { key: 'property', label: 'Commercial Property (overview, operating results, reserves, capital)', section: 'property', pages: ['overview', 'operating-results', 'reserve-distribution', 'capital'] },
-  { key: 'budget', label: 'Budget', section: 'planning', pages: ['builder'] },
+  { key: 'property', label: 'Commercial Property (board summary: income, expenses, net, reserve, payoff date, projected income)', section: 'property', pages: ['board-summary'] },
+  { key: 'budget', label: 'Budget (this year only)', section: 'planning', pages: ['builder'], pageParams: { builder: { print_mode: 'thisyear' } } },
   { key: 'council', label: 'Compensation council report', section: 'compensation', pages: ['council'] },
 ]);
 

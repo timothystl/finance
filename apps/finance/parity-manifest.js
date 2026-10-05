@@ -144,6 +144,7 @@ export const FINANCE_PARITY_SECTIONS = Object.freeze([
     capabilities: ['monthly financials', 'reserves', 'capital', 'repairs', 'forecast', 'valuation'],
     pages: [
       { id: 'overview', label: 'Overview', status: 'live' },
+      { id: 'board-summary', label: 'Board summary', status: 'live' },
       { id: 'operating-results', label: 'Operating results', status: 'live' },
       { id: 'rent-roll', label: 'Rent roll', status: 'live' },
       { id: 'receivables', label: 'Receivables & deposits', status: 'live' },

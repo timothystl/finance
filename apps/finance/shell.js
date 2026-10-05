@@ -3985,9 +3985,9 @@ export default {
         }), html);
       }
       const note = String(url.searchParams.get('note') || '').slice(0, COVER_NOTE_MAX).trim();
-      const renderPiece = async (section, page) => {
+      const renderPiece = async (section, page, extra = {}) => {
         const pieceUrl = new URL('/', url.origin);
-        pieceUrl.search = new URLSearchParams({ section, page, print: '1', fragment: '1' }).toString();
+        pieceUrl.search = new URLSearchParams({ section, page, print: '1', fragment: '1', ...extra }).toString();
         try {
           const res = await this.fetch(new Request(pieceUrl, { headers: request.headers }), env);
           return res.status === 200 ? await res.text() : null;
@@ -3999,7 +3999,7 @@ export default {
       const leftOut = [];
       for (const item of BOARD_PACKET_ITEMS.filter((entry) => include.includes(entry.key))) {
         for (const page of item.pages) {
-          const piece = await renderPiece(item.section, page);
+          const piece = await renderPiece(item.section, page, item.pageParams?.[page]);
           if (piece) pieces.push(`<div class="print-newpage">${piece}</div>`);
           else leftOut.push(`${item.label} (${page})`);
         }
@@ -4248,7 +4248,7 @@ export default {
             await seedPropertyBooksFromReports(env);
             return readPropertyBooks(env.FINANCE_DB);
           }) : null;
-        let propertyDebt = section.id === 'property' && resolveFinancePage(section, pageId).id === 'debt'
+        let propertyDebt = section.id === 'property' && ['debt', 'board-summary'].includes(resolveFinancePage(section, pageId).id)
           ? fetchFinancePropertyDebt(env) : null;
         // The Debt page's "Paid down so far": year-end mortgage from each balance sheet on file, the
         // same history the Balance Sheet's Property section shows. Never throws.

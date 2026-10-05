@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import worker from '../apps/finance/shell.js';
-import { BOARD_PACKET_ITEMS, printHref } from '../apps/finance/print-pages.js';
+import fs from 'node:fs';
+import { BOARD_PACKET_ITEMS, PRINT_STYLES, printHref } from '../apps/finance/print-pages.js';
 
 // Server-built print versions (Andrew, 2026-09-25): any page with print=1, and the board packet print.
 
@@ -123,6 +124,20 @@ describe('board packet cover letter template', () => {
   });
 });
 
+describe('board packet content', () => {
+  it('prints the Budget for the current year only, not the proposed next-year plan', () => {
+    const item = BOARD_PACKET_ITEMS.find((entry) => entry.key === 'budget');
+    expect(item.pageParams.builder).toEqual({ print_mode: 'thisyear' });
+  });
+
+  it('keeps Balance Sheet pages in the print even though they hold a year picker form', () => {
+    expect(PRINT_STYLES).toContain('section:not(.keep-in-print):has(> form)');
+    for (const label of ['Balance Sheet position', 'Balance Sheet account detail', 'Balance Sheet multi-year position']) {
+      expect(fs.readFileSync(new URL('../apps/finance/balance-pages.js', import.meta.url), 'utf8')).toContain(`<section class="report keep-in-print" aria-label="${label}">`);
+    }
+  });
+});
+
 describe('board packet print', () => {
   it('shows a picker limited to reports the viewer may see', async () => {
     const { html } = await get('/print/board-packet', env({ role: 'finance', permissions: { finance: 'view' } }));
@@ -141,7 +156,7 @@ describe('board packet print', () => {
     expect(html).toContain('<div class="print-cover-note">Council: &lt;b&gt;see Q3&lt;/b&gt;</div>');
     const item = BOARD_PACKET_ITEMS.find((entry) => entry.key === 'property');
     expect(html.match(/class="print-newpage"/g)).toHaveLength(item.pages.length);
-    expect(html).toContain('Vail Contracting LLC');
+    expect(html).toContain('Commercial Property, board summary');
     expect(html.match(/<!doctype html>/g)).toHaveLength(1);
   });
 
