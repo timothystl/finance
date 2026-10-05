@@ -389,7 +389,7 @@ function renderDebtChart(projection, years, extra, history = []) {
 // still to pay. Capital projects and reserve changes are not in it.
 function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0, growth = { saved: null, canSave: false }) {
   if (!income || !years.length) return '';
-  const AFTER = 5;
+  const AFTER = after;
   const last = Number(years.at(-1).year);
   const first = years[0];
   const rows = [...years, ...Array.from({ length: AFTER }, (_, i) => ({ year: String(last + 1 + i), paymentCents: 0, count: 12, paidOff: true }))].map((y) => {
@@ -480,7 +480,7 @@ function renderPropertyDebt(debtResult, canManage, status, message, searchParams
     : projection.status === 'payment_too_low' ? 'Payment does not cover monthly interest' : 'Complete the loan terms to calculate payoff';
   const annualMismatch = loan.storedAnnualDebtServiceCents != null && projection.derivedAnnualDebtServiceCents != null
     && Math.abs(loan.storedAnnualDebtServiceCents - projection.derivedAnnualDebtServiceCents) > 100;
-  return `<section class="report" aria-label="Commercial Property debt payoff">
+  return `<section class="report keep-in-print" aria-label="Commercial Property debt payoff">
     ${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Debt payoff & future', badge: 'Live from Connect' })}
     ${policyStatus(status, message)}
     ${renderKpiCards([
@@ -751,6 +751,7 @@ export function renderPropertyPage(pageId, {
       ${fallbackNote}
     </section>${canManagePropertyLedgers ? renderPropertyDistributionForm(propertyDistributionEntryStatus, propertyDistributionEntryMessage) : ''}`;
   }
+  if (pageId === 'board-summary') return renderPropertyBoardSummary({ propertyReportLive, propertyReservesLive, propertyDebt, propertyValuation });
   if (pageId === 'debt') {
     let income = null;
     try {

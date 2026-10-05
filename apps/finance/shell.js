@@ -181,6 +181,8 @@ import { ACQUISITION_STYLES, renderAcquisitionPage } from './property-acquisitio
 import { PROPERTY_CHART_STYLES } from './property-charts.js';
 import { renderCompensationPage } from './compensation-pages.js';
 import { renderPlanningPage } from './planning-pages.js';
+import { renderAttendancePage } from './attendance-pages.js';
+import { fetchLiveAttendanceSummary } from './finance-attendance-client.js';
 import { readCoverTemplate, saveCoverTemplate } from './board-packet-cover-service.js';
 import { renderAccountsPage } from './accounts-pages.js';
 import { renderChartsPage, renderFinancialMixRows } from './charts-pages.js';
@@ -1584,6 +1586,7 @@ function renderSectionBody(ctx) {
       annual: asResult(ctx.givingAnalytics),
     });
   }
+  if (section.id === 'attendance') return renderAttendancePage(page.id, { result: ctx.attendance });
   if (section.id === 'charts' && page.id === 'giving-pace') {
     return renderGivingPacePage({
       result: ctx.givingAnalytics?.ok ? { ok: true, data: ctx.givingAnalytics.result } : { ok: false, message: describeGivingBatchFailure(ctx.givingAnalytics) },
@@ -1957,7 +1960,7 @@ function renderShell(ctx) {
       <div class="sidebar-foot">${accountingViewer(roleResult) ? '<a href="/accounting">Familiar accounting workspace</a><br><br>' : ''}${production ? 'Production · Timothy Lutheran<br>Access verified through Connect' : 'Isolated staging environment<br>Test data may be present'}</div>
     </aside>
     <main>
-      <div class="page-head"><div><div class="eyebrow">${escapeHtml(group)}</div><h1 class="page-title">${escapeHtml(pageTitle)}</h1></div>${section.id === 'health' ? renderHealthViewToggle(resolveHealthView(ctx.healthView), { councilPreview }) : ''}<a class="print-link" href="${escapeHtml(printHref(ctx.searchParams))}">Print</a>${section.id === 'packet' ? ' <a class="print-link" href="/print/board-packet">Print board packet</a>' : ''}</div>
+      <div class="page-head"><div><div class="eyebrow">${escapeHtml(group)}</div><h1 class="page-title">${escapeHtml(pageTitle)}</h1></div>${section.id === 'health' ? renderHealthViewToggle(resolveHealthView(ctx.healthView), { councilPreview }) : ''}<a class="print-link" href="${escapeHtml(printHref(ctx.searchParams))}">Print</a>${section.id === 'planning' && page.id === 'builder' ? ` <a class="print-link" href="${escapeHtml(printHref(ctx.searchParams, { print_mode: 'thisyear' }))}">Print this year only</a>` : ''}${section.id === 'packet' ? ' <a class="print-link" href="/print/board-packet">Print board packet</a>' : ''}</div>
       ${roleNotice}
       ${councilNotice}
       ${sectionBody}
@@ -3982,9 +3985,9 @@ export default {
         }), html);
       }
       const note = String(url.searchParams.get('note') || '').slice(0, COVER_NOTE_MAX).trim();
-      const renderPiece = async (section, page) => {
+      const renderPiece = async (section, page, extra = {}) => {
         const pieceUrl = new URL('/', url.origin);
-        pieceUrl.search = new URLSearchParams({ section, page, print: '1', fragment: '1' }).toString();
+        pieceUrl.search = new URLSearchParams({ section, page, print: '1', fragment: '1', ...extra }).toString();
         try {
           const res = await this.fetch(new Request(pieceUrl, { headers: request.headers }), env);
           return res.status === 200 ? await res.text() : null;
@@ -3996,7 +3999,7 @@ export default {
       const leftOut = [];
       for (const item of BOARD_PACKET_ITEMS.filter((entry) => include.includes(entry.key))) {
         for (const page of item.pages) {
-          const piece = await renderPiece(item.section, page);
+          const piece = await renderPiece(item.section, page, item.key === 'budget' && url.searchParams.get('budget_year') === 'plan' ? {} : item.pageParams?.[page]);
           if (piece) pieces.push(`<div class="print-newpage">${piece}</div>`);
           else leftOut.push(`${item.label} (${page})`);
         }
@@ -4245,7 +4248,7 @@ export default {
             await seedPropertyBooksFromReports(env);
             return readPropertyBooks(env.FINANCE_DB);
           }) : null;
-        let propertyDebt = section.id === 'property' && resolveFinancePage(section, pageId).id === 'debt'
+        let propertyDebt = section.id === 'property' && ['debt', 'board-summary'].includes(resolveFinancePage(section, pageId).id)
           ? fetchFinancePropertyDebt(env) : null;
         let propertyRentGrowth = section.id === 'property' && resolveFinancePage(section, pageId).id === 'debt' && env.FINANCE_DB
           ? readRentGrowth(env.FINANCE_DB) : null;
@@ -4724,7 +4727,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,
