@@ -387,22 +387,28 @@ function renderDebtChart(projection, years, extra, history = []) {
 // It holds today's rent roll and operating costs (the Valuation page) flat, so the only thing that
 // moves from year to year is the mortgage payment; the first, part-year row counts only the months
 // still to pay. Capital projects and reserve changes are not in it.
-function renderDebtRevenue(years, income, loan) {
+function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0) {
   if (!income || !years.length) return '';
   const AFTER = 5;
   const last = Number(years.at(-1).year);
   const first = years[0];
   const rows = [...years, ...Array.from({ length: AFTER }, (_, i) => ({ year: String(last + 1 + i), paymentCents: 0, count: 12, paidOff: true }))].map((y) => {
     const months = y === first && first.count < 12 ? first.count : 12;
-    const rent = Math.round(income.rentCents * months / 12);
-    const noi = Math.round(income.noiCents * months / 12);
+    // Rent rises by the chosen percent each year after the first row; operating costs stay put, so
+    // every added rent dollar reaches the bottom line.
+    const fullRent = income.rentCents * (1 + growthPct / 100) ** (Number(y.year) - Number(first.year));
+    const rent = Math.round(fullRent * months / 12);
+    const noi = Math.round((income.noiCents + (fullRent - income.rentCents)) * months / 12);
     const left = noi - y.paymentCents;
     const tag = y.paidOff ? ' <small>(loan paid off)</small>' : (months < 12 ? ` <small>(${months} month${months === 1 ? '' : 's'})</small>` : (y.year === String(last) && y.count < 12 ? ' <small>(final payments)</small>' : ''));
     return `<tr><td>${y.year}${tag}</td><td>${formatCents(rent)}</td><td>${formatCents(noi)}</td><td>${formatCents(y.paymentCents)}</td><td><b>${formatSignedCents(left)}</b></td></tr>`;
   }).join('');
+  const form = `<form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">${extraCents ? `<input type="hidden" name="extra" value="${(extraCents / 100).toFixed(0)}">` : ''}
+      <label for="pd-growth">Yearly rent increase (%)</label> <input id="pd-growth" name="rent_growth" inputmode="decimal" value="${growthPct ? growthPct : ''}" placeholder="0"> <button type="submit" class="button-outline">Show</button></form>`;
   return `${renderSectionHeading({ eyebrow: 'Estimate', heading: 'Estimated income by year' })}
+    ${form}
     ${renderTable({ head: ['Year', 'Rental income', 'After operating costs', 'Mortgage payments', 'Left for the church'], rows })}
-    <p><small>An estimate, not a budget: today’s rent roll and operating costs${income.live ? '' : ' (sample figures, since the live valuation did not answer)'} held flat every year, with the ${formatCents(loan.monthlyPaymentCents)} monthly payment taken out until the loan is paid off. Capital projects and reserve changes are not included.</small></p>`;
+    <p><small>An estimate, not a budget: today’s rent roll and operating costs${income.live ? '' : ' (sample figures, since the live valuation did not answer)'}${growthPct ? `, with rent rising ${growthPct}% a year and operating costs held flat,` : ' held flat every year,'} and the ${formatCents(loan.monthlyPaymentCents)} monthly payment taken out until the loan is paid off. Capital projects and reserve changes are not included.</small></p>`;
 }
 
 function renderDebtOutlook(debt, searchParams, history = [], income = null) {
@@ -415,6 +421,8 @@ function renderDebtOutlook(debt, searchParams, history = [], income = null) {
   const terms = { balanceCents: projection.currentBalanceCents, annualRate: loan.interestRatePct, paymentCents: loan.monthlyPaymentCents, startMonth: start };
   const base = amortize(terms);
   const years = byYear(base.months);
+  const growthRaw = Number(String(searchParams?.get?.('rent_growth') || '').replace(/[%\s]/g, ''));
+  const growthPct = Number.isFinite(growthRaw) ? Math.min(15, Math.max(-10, growthRaw)) : 0;
   const extraRaw = Number(String(searchParams?.get?.('extra') || '').replace(/[$,\s]/g, ''));
   const extraCents = Number.isFinite(extraRaw) && extraRaw > 0 && extraRaw <= 100000 ? Math.round(extraRaw * 100) : 0;
   let extraYears = null;
@@ -431,9 +439,9 @@ function renderDebtOutlook(debt, searchParams, history = [], income = null) {
     ${renderDebtChart(projection, years, extraYears, history)}
     ${renderTable({ head: ['Year', 'Payments', 'Interest', 'Principal', 'Balance at year end'], rows: years.map((y) => `<tr><td>${y.year}${y.count < 12 ? ` <small>(${y.count} payment${y.count === 1 ? '' : 's'})</small>` : ''}</td><td>${formatCents(y.paymentCents)}</td><td>${formatCents(y.interestCents)}</td><td>${formatCents(y.principalCents)}</td><td>${formatCents(y.balanceCents)}</td></tr>`).join('') })}
     <p><small>After payoff, the ${formatCents(loan.monthlyPaymentCents)} monthly payment (${formatCents(loan.monthlyPaymentCents * 12)} a year) stays with the property.</small></p>
-    ${renderDebtRevenue(years, income, loan)}
+    ${renderDebtRevenue(years, income, loan, growthPct, extraCents)}
     ${renderSectionHeading({ eyebrow: 'What if', heading: 'Paying extra principal' })}
-    <form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">
+    <form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">${growthPct ? `<input type="hidden" name="rent_growth" value="${growthPct}">` : ''}
       <label for="pd-extra">Extra each month ($)</label> <input id="pd-extra" name="extra" inputmode="decimal" value="${extraCents ? (extraCents / 100).toFixed(0) : ''}" placeholder="500"> <button type="submit" class="button-outline">Show</button></form>
     ${extraLine}`;
 }
