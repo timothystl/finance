@@ -91,14 +91,14 @@ export const BOARD_PACKET_ITEMS = Object.freeze([
   { key: 'health', label: 'Financial Health', section: 'health', pages: ['overview'] },
   { key: 'giving', label: 'Giving Report to the Council (this month, General Fund, with the other categories)', section: 'giving-analytics', pages: ['council'] },
   { key: 'church', label: 'Church Report (overview, detail, multi-year trend, budget vs actual)', section: 'church', pages: ['overview', 'income-expense', 'trend', 'budget-actual'] },
-  { key: 'balance', label: 'Balance Sheet (position with account detail, and multi-year)', section: 'balance', pages: ['position', 'multi-year'] },
+  { key: 'balance', label: 'Balance Sheet (position, account detail, and multi-year position)', section: 'balance', pages: ['position', 'account-detail', 'multi-year'] },
   { key: 'daycare', label: 'Daycare Report (overview and budget comparison)', section: 'daycare', pages: ['overview', 'budget-comparison'] },
   { key: 'property', label: 'Commercial Property (overview, operating results, reserves, capital)', section: 'property', pages: ['overview', 'operating-results', 'reserve-distribution', 'capital'] },
   { key: 'budget', label: 'Budget', section: 'planning', pages: ['builder'] },
   { key: 'council', label: 'Compensation council report', section: 'compensation', pages: ['council'] },
 ]);
 
-export const BOARD_PACKET_DEFAULT_KEYS = ['health', 'church', 'balance', 'property', 'budget'];
+export const BOARD_PACKET_DEFAULT_KEYS = ['balance', 'budget'];
 export const COVER_NOTE_MAX = 2000;
 
 // The print link a page head offers: the same page, with print=1.

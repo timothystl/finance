@@ -77,7 +77,8 @@ describe('board packet print', () => {
   it('shows a picker limited to reports the viewer may see', async () => {
     const { html } = await get('/print/board-packet', env({ role: 'finance', permissions: { finance: 'view' } }));
     expect(html).toContain('Print the board packet');
-    expect(html).toContain('value="church" checked');
+    expect(html).toContain('value="balance" checked');
+    expect(html).not.toContain('value="church" checked');
     expect(html).not.toContain('value="budget"');
     expect(html).not.toContain('value="council"');
     expect(html).toContain('name="note"');
@@ -92,6 +93,11 @@ describe('board packet print', () => {
     expect(html.match(/class="print-newpage"/g)).toHaveLength(item.pages.length);
     expect(html).toContain('Vail Contracting LLC');
     expect(html.match(/<!doctype html>/g)).toHaveLength(1);
+  });
+
+  it('includes position, account detail, and multi-year position in the balance sheet section', () => {
+    const item = BOARD_PACKET_ITEMS.find((entry) => entry.key === 'balance');
+    expect(item.pages).toEqual(['position', 'account-detail', 'multi-year']);
   });
 
   it('ignores reports the viewer may not include', async () => {
