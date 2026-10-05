@@ -268,6 +268,26 @@ describe('Commercial Property reserve and capital policy editors', () => {
   });
 });
 
+describe('Commercial Property board summary', () => {
+  it('gives the high-level picture: payoff date and income by year through the year after payoff, with no forms', async () => {
+    const html = await page(roleEnv('admin'), 'section=property&page=board-summary');
+    expect(html).toContain('Commercial Property, board summary');
+    expect(html).toContain('2032-12');
+    expect(html).toContain('Projected income by year');
+    // The sample loan's last payment falls in 2033, so the table stops at 2034, the year after.
+    expect(html).toContain('2033 <small>(final payments)</small>');
+    expect(html).toContain('2034 <small>(loan paid off)</small>');
+    expect(html).not.toContain('2035');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('NaN');
+  });
+
+  it('says a figure is unavailable instead of showing zero when operating results cannot be read', async () => {
+    const html = await page(roleEnv('admin'), 'section=property&page=board-summary');
+    expect(html).toContain('Unavailable');
+  });
+});
+
 describe('Commercial Property debt payoff', () => {
   it('replaces the placeholder with the live payoff projection and an admin editor', async () => {
     const html = await page(roleEnv('admin'), 'section=property&page=debt');
@@ -330,6 +350,9 @@ describe('Commercial Property debt payoff', () => {
     const viewer = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: false });
     expect(viewer).toContain('Remembered for everyone: 4% a year.');
     expect(viewer).not.toContain('rent-growth-save');
+    const board = renderPropertyPage('board-summary', { ...args, canManagePropertyLedgers: false, propertyReportLive: null, propertyReservesLive: null });
+    expect(board).toContain('rent rising 4% a year');
+    expect(board).not.toContain('rent-growth-save');
     const typed = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: true, searchParams: new URLSearchParams('section=property&page=debt&rent_growth=0') });
     expect(typed).toContain('you are looking at 0% without saving it');
   });
