@@ -350,6 +350,9 @@ describe('Commercial Property debt payoff', () => {
     const viewer = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: false });
     expect(viewer).toContain('Remembered for everyone: 4% a year.');
     expect(viewer).not.toContain('rent-growth-save');
+    const board = renderPropertyPage('board-summary', { ...args, canManagePropertyLedgers: false, propertyReportLive: null, propertyReservesLive: null });
+    expect(board).toContain('rent rising 4% a year');
+    expect(board).not.toContain('rent-growth-save');
     const typed = renderPropertyPage('debt', { ...args, canManagePropertyLedgers: true, searchParams: new URLSearchParams('section=property&page=debt&rent_growth=0') });
     expect(typed).toContain('you are looking at 0% without saving it');
   });
