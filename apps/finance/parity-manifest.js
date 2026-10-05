@@ -113,6 +113,14 @@ export const FINANCE_PARITY_SECTIONS = Object.freeze([
     ],
   },
   {
+    id: 'attendance', label: 'Attendance', group: 'Attendance', permission: 'finance',
+    capabilities: ['weekend attendance', 'monthly averages', 'this year vs. last year', 'multi-year trend', 'board packet'],
+    pages: [
+      { id: 'overview', label: 'This year', status: 'live' },
+      { id: 'trend', label: 'Multi-year', status: 'live' },
+    ],
+  },
+  {
     id: 'balance', label: 'Balance Sheet', group: 'Balance Sheet', permission: 'finance',
     capabilities: ['assets', 'liabilities', 'equity', 'position trends', 'year selection', 'donor restrictions', 'cash trend', 'income statement tie-out', 'CSV export'],
     pages: [
@@ -277,7 +285,7 @@ export function resolveFinancePage(section, pageId) {
 
 // Explicit sidebar group order, independent of each section's position in FINANCE_PARITY_SECTIONS.
 const GROUP_ORDER = [
-  'Financial Health', 'Gift Entry', 'Giving', 'Tuition Aid', 'Charts', 'Church', 'Balance Sheet', 'Daycare',
+  'Financial Health', 'Gift Entry', 'Giving', 'Tuition Aid', 'Charts', 'Church', 'Attendance', 'Balance Sheet', 'Daycare',
   'Commercial Property', 'Facilities', 'Planning', 'Compensation', 'Payroll', 'HR & Staff',
   'QuickBooks', 'Board packet', 'Accounts & Data',
 ];

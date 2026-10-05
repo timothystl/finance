@@ -181,6 +181,8 @@ import { ACQUISITION_STYLES, renderAcquisitionPage } from './property-acquisitio
 import { PROPERTY_CHART_STYLES } from './property-charts.js';
 import { renderCompensationPage } from './compensation-pages.js';
 import { renderPlanningPage } from './planning-pages.js';
+import { renderAttendancePage } from './attendance-pages.js';
+import { fetchLiveAttendanceSummary } from './finance-attendance-client.js';
 import { readCoverTemplate, saveCoverTemplate } from './board-packet-cover-service.js';
 import { renderAccountsPage } from './accounts-pages.js';
 import { renderChartsPage, renderFinancialMixRows } from './charts-pages.js';
@@ -1584,6 +1586,7 @@ function renderSectionBody(ctx) {
       annual: asResult(ctx.givingAnalytics),
     });
   }
+  if (section.id === 'attendance') return renderAttendancePage(page.id, { result: ctx.attendance });
   if (section.id === 'charts' && page.id === 'giving-pace') {
     return renderGivingPacePage({
       result: ctx.givingAnalytics?.ok ? { ok: true, data: ctx.givingAnalytics.result } : { ok: false, message: describeGivingBatchFailure(ctx.givingAnalytics) },
@@ -4711,6 +4714,7 @@ export default {
         // costs its own timeout once, not once per section read in turn.
         [summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear] = await Promise.all([summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear]);
         const balancePriorYear = await balancePriorYearLoad;
+        const attendance = section.id === 'attendance' ? await fetchLiveAttendanceSummary(env, defaultLiveChurchReportFiscalYear()) : null;
         const [balancePropertyValue, balanceMortgageHistory, propertyMortgageHistory] = await Promise.all([balancePropertyValueLoad, balanceMortgageHistoryLoad, propertyMortgageHistoryLoad]);
         const printMode = url.searchParams.get('print') === '1';
         // The Planner is the one Finance page that runs script (its own, from this Worker only).
@@ -4722,7 +4726,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,

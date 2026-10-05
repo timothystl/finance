@@ -92,6 +92,7 @@ export const BOARD_PACKET_ITEMS = Object.freeze([
   { key: 'health', label: 'Financial Health', section: 'health', pages: ['overview'] },
   { key: 'giving', label: 'Giving Report to the Council (this month, General Fund, with the other categories)', section: 'giving-analytics', pages: ['council'] },
   { key: 'church', label: 'Church Report (overview, detail, multi-year trend, budget vs actual)', section: 'church', pages: ['overview', 'income-expense', 'trend', 'budget-actual'] },
+  { key: 'attendance', label: 'Attendance (this year and multi-year)', section: 'attendance', pages: ['overview', 'trend'] },
   { key: 'balance', label: 'Balance Sheet (position, account detail, and multi-year position)', section: 'balance', pages: ['position', 'account-detail', 'multi-year'] },
   { key: 'daycare', label: 'Daycare Report (overview and budget comparison)', section: 'daycare', pages: ['overview', 'budget-comparison'] },
   { key: 'property', label: 'Commercial Property (overview, operating results, reserves, capital)', section: 'property', pages: ['overview', 'operating-results', 'reserve-distribution', 'capital'] },
