@@ -45,6 +45,7 @@
   "vars": {
     "ENVIRONMENT": "production",
     "RELEASE_SHA": "unreleased",
+    "RELEASE_NUMBER": "",
     "FINANCE_ACCESS_TEAM_DOMAIN": "timothystl.cloudflareaccess.com",
     "FINANCE_ACCESS_AUD": "74de33dfe1e65b4eea9b8bf51e04d654e470a60773175bf34d74d55e940b66eb",
     // QuickBooks is owned by Finance when this is "1" (see docs/OPERATIONS.md).

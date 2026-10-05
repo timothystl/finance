@@ -94,7 +94,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy --config wrangler.finance.jsonc --var RELEASE_SHA:${{ inputs.expected_sha }}
+          command: deploy --config wrangler.finance.jsonc --var RELEASE_SHA:${{ inputs.expected_sha }} --var RELEASE_NUMBER:${{ github.run_number }}
 
       - name: Record deployment summary
         env:

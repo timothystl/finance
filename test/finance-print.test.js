@@ -181,3 +181,14 @@ describe('board packet print', () => {
     expect(status).toBe(403);
   });
 });
+
+describe('release number on screen', () => {
+  it('grows with each release and shows in the page header', async () => {
+    const { financeVersion } = await import('../apps/finance/version.js');
+    expect(financeVersion({})).toBe('0.1.0-alpha.1');
+    expect(financeVersion({ RELEASE_NUMBER: '9' })).toBe('0.1.0-alpha.9');
+    expect(financeVersion({ RELEASE_NUMBER: 'not a number' })).toBe('0.1.0-alpha.1');
+    const { html } = await get('/?section=attendance&page=overview', { ...env(), RELEASE_NUMBER: '12' });
+    expect(html).toContain('>v0.1.0-alpha.12<');
+  });
+});

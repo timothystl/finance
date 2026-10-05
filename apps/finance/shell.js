@@ -3,7 +3,7 @@ import { handleTuitionApi, tuitionAidViewer } from './tuition-service.js';
 import { renderTuitionPage } from './tuition-pages.js';
 import { TUITION_PLANNER_JS } from './tuition-planner/bundle.generated.js';
 import { BUDGET_PLANNER_LIVE_JS } from './budget-planner-live.js';
-import { FINANCE_RELEASE_CHANNEL, FINANCE_VERSION } from './version.js';
+import { FINANCE_RELEASE_CHANNEL, financeVersion } from './version.js';
 import givingFixture from '../../contracts/examples/giving-summary-v1.synthetic.json';
 import { acceptConnectGivingSummaryV1 } from '../../contracts/validators/connect-giving-consumer.js';
 import { reconcileSyntheticGivingDelivery } from './connect-giving-transport.js';
@@ -265,7 +265,7 @@ function releaseMetadata(env) {
   return {
     product: PRODUCT,
     environment: env.ENVIRONMENT || 'unknown',
-    version: FINANCE_VERSION,
+    version: financeVersion(env),
     releaseChannel: FINANCE_RELEASE_CHANNEL,
     releaseSha: env.RELEASE_SHA || 'local',
   };
@@ -1949,6 +1949,7 @@ function renderShell(ctx) {
       <a class="sidebar-brand" href="/"><img src="/assets/finance-mark.png" alt="" width="40" height="40"><span class="brand-text"><span class="brand-name">Timothy Finance</span><span class="brand-sub">Timothy Lutheran · St. Louis</span></span></a>
       ${production ? '' : '<span class="env-pill" title="Isolated staging environment. Test data may be present.">Staging workspace</span>'}
       <div class="header-right">
+        <span class="version-tag" title="Release ${escapeHtml(String(metadata.releaseSha || '').slice(0, 7))}" style="font-size:12px;color:#5B6475;white-space:nowrap">v${escapeHtml(metadata.version)}</span>
         ${renderViewingAs(section, page, { roleResult, councilPreview })}
         ${initials ? `<span class="avatar" title="${escapeHtml(roleResult.identity)}">${escapeHtml(initials)}</span>` : ''}
       </div>
