@@ -10,7 +10,9 @@ fixtures, or documentation.
   `finance_daycare_rooms`, `finance_budget_plan`, `finance_property_*` (monthly, reserves,
   disbursements, capital ledger, distributions, repairs, budget, receivables, bank recs),
   `finance_import_log`, `finance_import_history`, and the legacy `finance_settings` rows
-  (including the full compensation planner model and private council drafts).
+  (including the full compensation planner model and private council drafts, and the yearly rent
+  increase the Commercial Property Debt page's income estimate opens with,
+  `finance_property_rent_growth_pct`).
   The accounting tables (the list is `FINANCE_TABLES` in `src/finance-storage.js`) were copied from
   Connect's database at the September 23, 2026 cutover (13,411 rows across 14 tables, verified row by
   row against the frozen source). Finance is now the only writer.

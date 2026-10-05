@@ -2,7 +2,7 @@ import { buildPropertyReportView, buildPropertyValuationView } from './property-
 import { buildPropertyForecastView, buildLivePropertyForecastView } from './property-forecast-service.js';
 import { buildPropertyDistributionsView } from './property-distributions-service.js';
 import { escapeHtml, formatCents, formatSignedCents, renderKpiCards, renderSectionHeading, renderTable } from './render-helpers.js';
-import { amortize, byYear } from './property-books-service.js';
+import { amortize, byYear, parseRentGrowth } from './property-books-service.js';
 import { ORIGINAL_PROPERTY_LOAN, renderMortgageHistory } from './balance-pages.js';
 import { CHART_COLORS, renderColumnChart, renderLedgerByYearChart, renderLineChart, renderOperatingCharts, shortPeriod } from './property-charts.js';
 
@@ -387,7 +387,7 @@ function renderDebtChart(projection, years, extra, history = []) {
 // It holds today's rent roll and operating costs (the Valuation page) flat, so the only thing that
 // moves from year to year is the mortgage payment; the first, part-year row counts only the months
 // still to pay. Capital projects and reserve changes are not in it.
-function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0) {
+function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0, growth = { saved: null, canSave: false }) {
   if (!income || !years.length) return '';
   const AFTER = 5;
   const last = Number(years.at(-1).year);
@@ -403,15 +403,16 @@ function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0) {
     const tag = y.paidOff ? ' <small>(loan paid off)</small>' : (months < 12 ? ` <small>(${months} month${months === 1 ? '' : 's'})</small>` : (y.year === String(last) && y.count < 12 ? ' <small>(final payments)</small>' : ''));
     return `<tr><td>${y.year}${tag}</td><td>${formatCents(rent)}</td><td>${formatCents(noi)}</td><td>${formatCents(y.paymentCents)}</td><td><b>${formatSignedCents(left)}</b></td></tr>`;
   }).join('');
+  const remembered = growth.saved != null ? `<p><small>${growth.saved === growthPct ? `Remembered for everyone: ${growth.saved}% a year.` : `The remembered rate is ${growth.saved}% a year; you are looking at ${growthPct}% without saving it.`}</small></p>` : '';
   const form = `<form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">${extraCents ? `<input type="hidden" name="extra" value="${(extraCents / 100).toFixed(0)}">` : ''}
-      <label for="pd-growth">Yearly rent increase (%)</label> <input id="pd-growth" name="rent_growth" inputmode="decimal" value="${growthPct ? growthPct : ''}" placeholder="0"> <button type="submit" class="button-outline">Show</button></form>`;
+      <label for="pd-growth">Yearly rent increase (%)</label> <input id="pd-growth" name="rent_growth" inputmode="decimal" value="${growthPct || (growth.saved != null ? '0' : '')}" placeholder="0"> <button type="submit" class="button-outline">Show</button>${growth.canSave ? ' <button type="submit" formmethod="post" formaction="/api/v1/property/rent-growth-save">Remember this rate</button>' : ''}</form>${remembered}`;
   return `${renderSectionHeading({ eyebrow: 'Estimate', heading: 'Estimated income by year' })}
     ${form}
     ${renderTable({ head: ['Year', 'Rental income', 'After operating costs', 'Mortgage payments', 'Left for the church'], rows })}
     <p><small>An estimate, not a budget: today’s rent roll and operating costs${income.live ? '' : ' (sample figures, since the live valuation did not answer)'}${growthPct ? `, with rent rising ${growthPct}% a year and operating costs held flat,` : ' held flat every year,'} and the ${formatCents(loan.monthlyPaymentCents)} monthly payment taken out until the loan is paid off. Capital projects and reserve changes are not included.</small></p>`;
 }
 
-function renderDebtOutlook(debt, searchParams, history = [], income = null) {
+function renderDebtOutlook(debt, searchParams, history = [], income = null, growth = { saved: null, canSave: false }) {
   const { loan, activity, projection } = debt;
   const lastPayment = activity.at(-1);
   const mismatch = lastPayment && loan.monthlyPaymentCents != null && lastPayment.paymentCents !== loan.monthlyPaymentCents
@@ -421,8 +422,9 @@ function renderDebtOutlook(debt, searchParams, history = [], income = null) {
   const terms = { balanceCents: projection.currentBalanceCents, annualRate: loan.interestRatePct, paymentCents: loan.monthlyPaymentCents, startMonth: start };
   const base = amortize(terms);
   const years = byYear(base.months);
-  const growthRaw = Number(String(searchParams?.get?.('rent_growth') || '').replace(/[%\s]/g, ''));
-  const growthPct = Number.isFinite(growthRaw) ? Math.min(15, Math.max(-10, growthRaw)) : 0;
+  // A percentage typed into the page wins; otherwise the one remembered for the church; otherwise none.
+  const typedGrowth = parseRentGrowth(searchParams?.get?.('rent_growth'));
+  const growthPct = typedGrowth ?? growth.saved ?? 0;
   const extraRaw = Number(String(searchParams?.get?.('extra') || '').replace(/[$,\s]/g, ''));
   const extraCents = Number.isFinite(extraRaw) && extraRaw > 0 && extraRaw <= 100000 ? Math.round(extraRaw * 100) : 0;
   let extraYears = null;
@@ -439,7 +441,7 @@ function renderDebtOutlook(debt, searchParams, history = [], income = null) {
     ${renderDebtChart(projection, years, extraYears, history)}
     ${renderTable({ head: ['Year', 'Payments', 'Interest', 'Principal', 'Balance at year end'], rows: years.map((y) => `<tr><td>${y.year}${y.count < 12 ? ` <small>(${y.count} payment${y.count === 1 ? '' : 's'})</small>` : ''}</td><td>${formatCents(y.paymentCents)}</td><td>${formatCents(y.interestCents)}</td><td>${formatCents(y.principalCents)}</td><td>${formatCents(y.balanceCents)}</td></tr>`).join('') })}
     <p><small>After payoff, the ${formatCents(loan.monthlyPaymentCents)} monthly payment (${formatCents(loan.monthlyPaymentCents * 12)} a year) stays with the property.</small></p>
-    ${renderDebtRevenue(years, income, loan, growthPct, extraCents)}
+    ${renderDebtRevenue(years, income, loan, growthPct, extraCents, growth)}
     ${renderSectionHeading({ eyebrow: 'What if', heading: 'Paying extra principal' })}
     <form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">${growthPct ? `<input type="hidden" name="rent_growth" value="${growthPct}">` : ''}
       <label for="pd-extra">Extra each month ($)</label> <input id="pd-extra" name="extra" inputmode="decimal" value="${extraCents ? (extraCents / 100).toFixed(0) : ''}" placeholder="500"> <button type="submit" class="button-outline">Show</button></form>
@@ -468,7 +470,7 @@ function renderDebtPaidSoFar(currentBalanceCents, history) {
     </section>`;
 }
 
-function renderPropertyDebt(debtResult, canManage, status, message, searchParams, mortgageHistory = null, income = null) {
+function renderPropertyDebt(debtResult, canManage, status, message, searchParams, mortgageHistory = null, income = null, growth = { saved: null, canSave: false }) {
   if (!debtResult?.ok) return `<section aria-label="Property debt unavailable">${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Debt payoff & future', badge: 'Unavailable' })}<p class="status status-pending">The saved loan record could not be read. Existing property and loan records are unaffected.</p></section>`;
   const { loan, activity, projection } = debtResult.debt;
   const dollars = (cents) => cents == null ? '' : (cents / 100).toFixed(2);
@@ -490,7 +492,7 @@ function renderPropertyDebt(debtResult, canManage, status, message, searchParams
     ${renderDebtPaidSoFar(projection.currentBalanceCents ?? loan.balanceCents, mortgageHistory)}
     ${annualMismatch ? `<p class="status status-error">Review the saved annual debt service (${formatCents(loan.storedAnnualDebtServiceCents)}): it does not match 12 monthly payments (${formatCents(projection.derivedAnnualDebtServiceCents)}).</p>` : ''}
     ${activity.length ? renderTable({ head: ['Month', 'Payment', 'Interest', 'Principal', 'Balance after'], rows: activity.map((row) => `<tr><td>${escapeHtml(row.period)}</td><td>${formatCents(row.paymentCents)}</td><td>${formatCents(row.interestCents)}</td><td>${formatCents(row.principalCents)}</td><td>${formatCents(row.balanceAfterCents)}</td></tr>`).join('') }) : '<p><small>No complete monthly principal/interest rows occur after the saved balance date.</small></p>'}
-    ${renderDebtOutlook(debtResult.debt, searchParams, mortgageHistory, income)}
+    ${renderDebtOutlook(debtResult.debt, searchParams, mortgageHistory, income, growth)}
     ${canManage ? `<form method="POST" action="/api/v1/connect-property-meta-write"><input type="hidden" name="debt_policy_form" value="1"><div class="grid form-grid">
       <div class="field"><label for="pd-lender">Lender</label><input id="pd-lender" name="lender" maxlength="120" value="${escapeHtml(loan.lender || '')}"></div>
       <div class="field"><label for="pd-balance">Confirmed balance ($)</label><input id="pd-balance" type="number" name="balance" min="0" step="0.01" value="${dollars(loan.balanceCents)}" required></div>
@@ -569,7 +571,7 @@ export function renderPropertyPage(pageId, {
   propertyRepairRemoveStatus, propertyRepairRemoveMessage,
   propertyMetaEntryStatus, propertyMetaEntryMessage, propertyPolicy, propertyDebt,
   propertyReservePolicyStatus, propertyReservePolicyMessage, propertyCapitalPolicyStatus, propertyCapitalPolicyMessage,
-  propertyDebtStatus, propertyDebtMessage, searchParams, propertyMortgageHistory = null,
+  propertyDebtStatus, propertyDebtMessage, searchParams, propertyMortgageHistory = null, propertyRentGrowthSaved = null,
   propertyBudgetImportStatus, propertyBudgetImportMessage,
   propertyMonthlyImportCsvStatus, propertyMonthlyImportCsvMessage,
 }) {
@@ -755,7 +757,7 @@ export function renderPropertyPage(pageId, {
       const totals = buildPropertyValuationView(propertyValuation).totals;
       if (Number.isFinite(totals.effectiveRentalIncomeCents) && Number.isFinite(totals.noiCents)) income = { rentCents: totals.effectiveRentalIncomeCents, noiCents: totals.noiCents, live: propertyValuation.source === 'live' };
     } catch { income = null; }
-    return renderPropertyDebt(propertyDebt, canManagePropertyLedgers, propertyDebtStatus, propertyDebtMessage, searchParams, propertyMortgageHistory, income);
+    return renderPropertyDebt(propertyDebt, canManagePropertyLedgers, propertyDebtStatus, propertyDebtMessage, searchParams, propertyMortgageHistory, income, { saved: propertyRentGrowthSaved, canSave: canManagePropertyLedgers });
   }
 
   // 'overview' (default) -- use the reconciled annual summary from the same live contract as

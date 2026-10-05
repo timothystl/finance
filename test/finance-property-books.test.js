@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import worker from '../apps/finance/shell.js';
 import { resetEnsuredSchemasForTests } from '../apps/finance/finance-owned-schema.js';
 import {
-  amortize, byYear, parseReceivablesPaste, reconcile, signedCents, summarizeReceivables,
+  amortize, byYear, parseReceivablesPaste, parseRentGrowth, readRentGrowth, reconcile, signedCents, summarizeReceivables,
 } from '../apps/finance/property-books-service.js';
 
 function makeDb() {
@@ -137,6 +137,30 @@ describe('Property books pages', () => {
     const edit = await (await get(env, '&page=bank-rec&edit=2026-07')).text();
     expect(edit).toContain('Edit July 2026');
     expect(edit).toContain('value="11000.00"');
+  });
+
+  it('remembers the yearly rent increase for the Debt page, for admins only', async () => {
+    const { env, db } = makeEnv();
+    db.sqlite.exec("CREATE TABLE finance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')");
+    expect(await readRentGrowth(db)).toBe(null);
+    const saved = await post(env, '/api/v1/property/rent-growth-save', { rent_growth: '3.5%' });
+    expect(saved.headers.get('Location')).toContain('page=debt');
+    expect(saved.headers.get('Location')).toContain('status=ok');
+    expect(await readRentGrowth(db)).toBe(3.5);
+    await post(env, '/api/v1/property/rent-growth-save', { rent_growth: '99' });
+    expect(await readRentGrowth(db)).toBe(15);
+    const bad = await post(env, '/api/v1/property/rent-growth-save', { rent_growth: 'abc' });
+    expect(bad.headers.get('Location')).toContain('reason=invalid');
+    expect(await readRentGrowth(db)).toBe(15);
+    await post(env, '/api/v1/property/rent-growth-save', { rent_growth: '' });
+    expect(await readRentGrowth(db)).toBe(null);
+    expect(parseRentGrowth('-50')).toBe(-10);
+
+    const other = makeEnv({ role: 'finance' });
+    other.db.sqlite.exec("CREATE TABLE finance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')");
+    const denied = await post(other.env, '/api/v1/property/rent-growth-save', { rent_growth: '4' });
+    expect(denied.headers.get('Location')).toContain('access_denied');
+    expect(await readRentGrowth(other.db)).toBe(null);
   });
 
 });
