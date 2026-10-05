@@ -15,7 +15,7 @@ placeholder). Each section is also gated by the viewer's role and permission, ch
 
 | Section | Pages (summary) | Where its data lives |
 | --- | --- | --- |
-| Financial Health, Charts, Board packet | Summary and detail, revenue and expense mix, cash and reserve, giving pace and concentration, packet builder and print | Reads Finance reports plus Giving totals from Connect |
+| Financial Health, Charts, Board packet | Summary and detail, revenue and expense mix, cash and reserve, giving pace and concentration, packet builder and print, with a saved monthly cover-letter template | Reads Finance reports plus Giving totals from Connect |
 | Gift Entry | Enter a batch, Transactions, Online giving, Funds, Reconciliation to bank, Batch reports, online form settings | Connect (relayed; Finance stores nothing) |
 | Giving, Giving reports, Donor letters | Council report, trends, year over year, pledges, what-if, statements, bands, nudges, letters and receipts | Connect (relayed) |
 | Church Report, Balance Sheet, Daycare Report, Chart of Accounts | Overview, detail, multi-year trends, imports, daycare entries and allocation, account layout and board categories, Access and roles view | Finance database |

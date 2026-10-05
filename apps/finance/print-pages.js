@@ -76,7 +76,8 @@ export const PRINT_STYLES = `
   .print-picker fieldset { border: 1px solid #d9dfda; border-radius: .5rem; margin: 0 0 1rem; padding: .6rem 1rem; }
   .print-picker label { display: block; padding: .25rem 0; }
   .print-picker textarea { width: 100%; min-height: 6rem; font: inherit; box-sizing: border-box; }
-  .print-picker button { background: #1f6b45; color: #fff; border: 0; border-radius: .45rem; padding: .7rem 1.1rem; font-weight: 700; }
+  .print-picker button { background: #1f6b45; color: #fff; border: 1px solid #1f6b45; border-radius: .45rem; padding: .7rem 1.1rem; font-weight: 700; }
+  .print-picker button.secondary { background: #fff; color: #1f6b45; }
   @page { size: letter; margin: .55in .6in; }
   @media print {
     body.print-body { background: #fff; }
@@ -91,15 +92,30 @@ export const BOARD_PACKET_ITEMS = Object.freeze([
   { key: 'health', label: 'Financial Health', section: 'health', pages: ['overview'] },
   { key: 'giving', label: 'Giving Report to the Council (this month, General Fund, with the other categories)', section: 'giving-analytics', pages: ['council'] },
   { key: 'church', label: 'Church Report (overview, detail, multi-year trend, budget vs actual)', section: 'church', pages: ['overview', 'income-expense', 'trend', 'budget-actual'] },
-  { key: 'balance', label: 'Balance Sheet (position with account detail, and multi-year)', section: 'balance', pages: ['position', 'multi-year'] },
+  { key: 'balance', label: 'Balance Sheet (position, account detail, and multi-year position)', section: 'balance', pages: ['position', 'account-detail', 'multi-year'] },
   { key: 'daycare', label: 'Daycare Report (overview and budget comparison)', section: 'daycare', pages: ['overview', 'budget-comparison'] },
   { key: 'property', label: 'Commercial Property (overview, operating results, reserves, capital)', section: 'property', pages: ['overview', 'operating-results', 'reserve-distribution', 'capital'] },
   { key: 'budget', label: 'Budget', section: 'planning', pages: ['builder'] },
   { key: 'council', label: 'Compensation council report', section: 'compensation', pages: ['council'] },
 ]);
 
-export const BOARD_PACKET_DEFAULT_KEYS = ['health', 'church', 'balance', 'property', 'budget'];
+export const BOARD_PACKET_DEFAULT_KEYS = ['balance', 'budget'];
 export const COVER_NOTE_MAX = 2000;
+export const COVER_TEMPLATE_KEY = 'board_packet_cover_template';
+// Starting letter shown until the first save. Bracketed spots are the parts to change each month.
+export const DEFAULT_COVER_TEMPLATE = `Dear Council members,
+
+Enclosed is the [Month Year] financial packet: the Balance Sheet (position, account detail, and multi-year position) and the Budget.
+
+Highlights this month:
+- [One sentence on where we stand against budget.]
+- [One sentence on cash, reserves, or the mortgage.]
+- [Anything the board is asked to decide or discuss.]
+
+Thank you for your faithful care of Timothy's resources.
+
+Grace and peace,
+Pastor Andrew`;
 
 // The print link a page head offers: the same page, with print=1.
 export function printHref(searchParams) {
@@ -142,7 +158,7 @@ export function renderPrintDocument({ documentTitle, backHref, contentHtml, rele
 </html>`;
 }
 
-export function renderBoardPacketPicker({ items, release, production, message = '' }) {
+export function renderBoardPacketPicker({ items, release, production, message = '', coverTemplate = DEFAULT_COVER_TEMPLATE, canSaveTemplate = false, templateSaved = false }) {
   const boxes = items.map((item) => `<label><input type="checkbox" name="include" value="${item.key}"${BOARD_PACKET_DEFAULT_KEYS.includes(item.key) ? ' checked' : ''}> ${escapeHtml(item.label)}</label>`).join('');
   return `<!doctype html>
 <html lang="en">
@@ -155,8 +171,12 @@ export function renderBoardPacketPicker({ items, release, production, message = 
     ${message ? `<p class="status status-error">${escapeHtml(message)}</p>` : ''}
     <form method="GET" action="/print/board-packet">
       <fieldset><legend>Reports</legend>${boxes || '<p>No reports are available to your role.</p>'}</fieldset>
-      <fieldset><legend>Cover note (optional, not saved)</legend><textarea name="note" maxlength="${COVER_NOTE_MAX}" placeholder="A short note to the council, printed on the cover page."></textarea></fieldset>
-      <button type="submit">Open packet for printing</button>
+      <fieldset><legend>Cover letter</legend>
+        ${templateSaved ? '<p class="status">Template saved. It will appear here next month.</p>' : ''}
+        <textarea name="note" maxlength="${COVER_NOTE_MAX}" aria-label="Cover letter">${escapeHtml(coverTemplate)}</textarea>
+        <p><small>Edit the bracketed parts for this month. Printing uses exactly what is in the box.${canSaveTemplate ? ' “Save as template” keeps this wording as next month’s starting point.' : ''}</small></p>
+      </fieldset>
+      <button type="submit">Open packet for printing</button>${canSaveTemplate ? ' <button type="submit" formmethod="post" formaction="/print/board-packet/cover" class="secondary">Save as template</button>' : ''}
     </form>
     <p><small>Timothy Finance ${escapeHtml(release)}${production ? '' : ' · staging'}</small></p>
   </main>

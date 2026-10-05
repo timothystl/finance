@@ -73,11 +73,62 @@ describe('print version of a page', () => {
   });
 });
 
+function settingsDb(initial = {}) {
+  const store = new Map(Object.entries(initial));
+  return {
+    store,
+    prepare(sql) {
+      return {
+        bind(...args) {
+          return {
+            async first() { return store.has(args[0]) ? { value: store.get(args[0]) } : null; },
+            async run() { store.set(args[0], args[1]); return { success: true }; },
+          };
+        },
+      };
+    },
+  };
+}
+
+describe('board packet cover letter template', () => {
+  it('shows the starter letter until one is saved, and the saved one afterward', async () => {
+    const starter = await get('/print/board-packet', { ...env(), FINANCE_DB: settingsDb() });
+    expect(starter.html).toContain('Dear Council members,');
+    expect(starter.html).toContain('Save as template');
+    const saved = await get('/print/board-packet', { ...env(), FINANCE_DB: settingsDb({ board_packet_cover_template: 'October letter <b>x</b>' }) });
+    expect(saved.html).toContain('October letter &lt;b&gt;x&lt;/b&gt;');
+    expect(saved.html).not.toContain('Dear Council members,');
+  });
+
+  it('saves the template for a finance editor and redirects back to the picker', async () => {
+    const db = settingsDb();
+    const form = new FormData();
+    form.set('note', '  New monthly wording  ');
+    const res = await worker.fetch(new Request('https://finance.test/print/board-packet/cover', { method: 'POST', body: form, headers: { 'Cf-Access-Jwt-Assertion': 'signed.jwt' } }), { ...env(), FINANCE_DB: db });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('Location')).toBe('/print/board-packet?saved=1');
+    expect(db.store.get('board_packet_cover_template')).toBe('New monthly wording');
+  });
+
+  it('refuses to save for a view-only role and hides the save button', async () => {
+    const db = settingsDb();
+    const viewer = env({ role: 'finance', permissions: { finance: 'view' } });
+    const form = new FormData();
+    form.set('note', 'nope');
+    const res = await worker.fetch(new Request('https://finance.test/print/board-packet/cover', { method: 'POST', body: form, headers: { 'Cf-Access-Jwt-Assertion': 'signed.jwt' } }), { ...viewer, FINANCE_DB: db });
+    expect(res.status).toBe(403);
+    expect(db.store.size).toBe(0);
+    const page = await get('/print/board-packet', { ...viewer, FINANCE_DB: db });
+    expect(page.html).not.toContain('Save as template');
+  });
+});
+
 describe('board packet print', () => {
   it('shows a picker limited to reports the viewer may see', async () => {
     const { html } = await get('/print/board-packet', env({ role: 'finance', permissions: { finance: 'view' } }));
     expect(html).toContain('Print the board packet');
-    expect(html).toContain('value="church" checked');
+    expect(html).toContain('value="balance" checked');
+    expect(html).not.toContain('value="church" checked');
     expect(html).not.toContain('value="budget"');
     expect(html).not.toContain('value="council"');
     expect(html).toContain('name="note"');
@@ -92,6 +143,11 @@ describe('board packet print', () => {
     expect(html.match(/class="print-newpage"/g)).toHaveLength(item.pages.length);
     expect(html).toContain('Vail Contracting LLC');
     expect(html.match(/<!doctype html>/g)).toHaveLength(1);
+  });
+
+  it('includes position, account detail, and multi-year position in the balance sheet section', () => {
+    const item = BOARD_PACKET_ITEMS.find((entry) => entry.key === 'balance');
+    expect(item.pages).toEqual(['position', 'account-detail', 'multi-year']);
   });
 
   it('ignores reports the viewer may not include', async () => {
