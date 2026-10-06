@@ -81,8 +81,24 @@ const hidden = (name, value) => `<input type="hidden" name="${e(name)}" value="$
 const yearSelect = (p) => `<label>Year <select name="year">${Array.from({ length: 7 }, (_, i) => p.thisYear - i).map((y) => `<option value="${y}"${y === p.year ? ' selected' : ''}>${y}${y === p.thisYear ? ' (so far)' : ''}</option>`).join('')}</select></label>`;
 const scopeSelect = (p) => `<label>Count by <select name="scope"><option value="household"${p.scope === 'household' ? ' selected' : ''}>Household</option><option value="person"${p.scope === 'person' ? ' selected' : ''}>Person</option></select></label>`;
 const rangeFields = (p) => `<label>From <input type="date" name="from" value="${e(p.from)}"></label><label>To <input type="date" name="to" value="${e(p.to)}"></label>`;
+// Funds that share a leading account code ("40085 General Fund", "40085 Lent", …) are one fund for
+// giving analysis, so they are listed once; Connect widens the choice to every fund with that code.
 function fundSelect(p, funds) {
-  return `<label>Fund <select name="fund_id"><option value="">All funds</option>${(funds || []).map((f) => `<option value="${e(f.id)}"${String(f.id) === p.fund ? ' selected' : ''}>${e(f.name)}</option>`).join('')}</select></label>`;
+  const byCode = new Map();
+  const options = [];
+  for (const f of funds || []) {
+    const code = /^(\d+)\s/.exec(String(f.name || ''))?.[1];
+    if (!code) { options.push({ ids: [String(f.id)], label: f.name }); continue; }
+    let group = byCode.get(code);
+    if (!group) { group = { ids: [], names: [] }; byCode.set(code, group); options.push(group); }
+    group.ids.push(String(f.id));
+    group.names.push(String(f.name).replace(/^\d+\s+/, ''));
+  }
+  const rows = options.map((o) => {
+    const label = o.names ? `${/^(\d+)/.exec(String(funds.find((f) => String(f.id) === o.ids[0])?.name))[1]} — ${o.names.length > 1 ? `all (${o.names.join(', ')})` : o.names[0]}` : o.label;
+    return `<option value="${e(o.ids[0])}"${o.ids.includes(p.fund) ? ' selected' : ''}>${e(label)}</option>`;
+  }).join('');
+  return `<label>Fund <select name="fund_id"><option value="">All funds</option>${rows}</select></label>`;
 }
 function controls(page, fields, keep) {
   return `<form method="GET" action="/" class="gr-controls">${hidden('section', 'giving-reports')}${hidden('page', page)}${keep.council ? hidden('council', '1') : ''}${fields}<button type="submit">Show</button></form>`;
@@ -291,9 +307,29 @@ export function renderGiverTrendsPage({ results, params: p, keep, namedHidden })
 
 // ── Plateaus and nudges ──────────────────────────────────────────────────────────────────────
 const wk = (cents) => `${money(cents)}/wk`;
-function optionCell(o) {
+function optionCell(o, group = 'regular') {
   if (!o) return '—';
-  return `<b>${wk(o.target_cents)}</b><small>+${wk(o.delta_cents)} → +${money(o.annual_delta_cents)}/yr</small>${o.impact_text ? `<em>${e(o.impact_text)}</em>` : ''}`;
+  const impact = o.impact_text ? `<em>${e(o.impact_text)}</em>` : '';
+  if (group === 'rare' || group === 'irregular') return `<b>${money(o.new_annual_total_cents / 12)}/mo</b><small>+${money(o.annual_delta_cents)}/yr</small>${impact}`;
+  if (group === 'large_gift') return `<b>${money(o.new_annual_total_cents)}/yr</b><small>+${money(o.annual_delta_cents)}/yr${o.pct_increase ? ` (${o.pct_increase}%)` : ''}</small>${impact}`;
+  return `<b>${wk(o.target_cents)}</b><small>+${wk(o.delta_cents)} → +${money(o.annual_delta_cents)}/yr</small>${impact}`;
+}
+const GROUP_BLURBS = {
+  rare: 'Gave a few times this year. The ask is a standing monthly gift, starting just above what they gave per month.',
+  irregular: 'Gave several times but not in most months. The ask is a steady monthly gift.',
+  regular: 'Gave in most months so far, so monthly and weekly givers both count. The increase is set by what they give now: +$10 a week under $25, +$25 under $75, +$45 from $75 a week. Modest and Generous bracket that step.',
+  large_gift: 'A few gifts, each in the thousands, such as a retirement distribution. They are thanked, and offered a modest percentage more, not asked to start giving.',
+};
+function groupBlocks(d, who, who1) {
+  const groups = (d.groups || []).filter((g) => g.num_people > 0);
+  const steps = groups.map((g) => {
+    const weekly = g.key === 'regular';
+    const rows = g.steps.map((t) => `<tr><td>${e(t.label)}</td><td>${t.num_people}</td><td>${weekly ? `${money(t.now_min_cents)}–${money(t.now_max_cents)}/wk` : `${money(t.now_min_cents * 52)}–${money(t.now_max_cents * 52)}/yr`}</td><td>${weekly ? `+${wk(t.avg_weekly_increase_cents)}` : `+${money(Math.round(t.upside_standard_annual_cents / Math.max(1, t.num_people)))}/yr`}</td><td>+${money(t.upside_modest_annual_cents)}–${money(t.upside_generous_annual_cents)}</td></tr>`).join('');
+    return `<section class="gr-card"><h2>${e(g.label)} <small>${e(g.goal)}</small></h2><p class="muted">${plural(g.num_people, who1, who)}. ${GROUP_BLURBS[g.key] || ''}</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Step</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Now</th><th>Typical increase</th><th>Added a year</th></tr></thead><tbody>${rows}${g.steps.length > 1 ? `<tr class="total-row"><td>Total</td><td>${g.num_people}</td><td></td><td></td><td>+${money(g.upside_modest_annual_cents)}–${money(g.upside_generous_annual_cents)}</td></tr>` : ''}</tbody></table></div></section>`;
+  }).join('');
+  const people = groups.map((g) => `<details class="gr-tier"><summary>${e(g.label)}: ${plural(g.num_people, who1, who)} — ${e(g.goal.toLowerCase())}</summary>${g.steps.map((t) => `<h3 class="gr-step">${e(t.label)} · ${plural(t.num_people, who1, who)}</h3><div class="table-wrap"><table class="gr-num gr-options"><thead><tr><th>${d.scope === 'person' ? 'Name' : 'Household'}</th><th>Now</th><th>Modest</th><th>Standard</th><th>Generous</th></tr></thead>
+    <tbody>${t.people.map((x) => `<tr><td>${e(x.name)}</td><td>${g.key === 'regular' ? `<b>${wk(x.weekly_cents)}</b><small>${plural(x.gifts, 'gift')}${x.cadence_label ? `, ${e(x.cadence_label)}` : ''}</small>` : `<b>${money(x.total_cents)}</b><small>${plural(x.gifts, 'gift')}${x.months_given != null ? `, ${plural(x.months_given, 'month')}` : ''}</small>`}</td>${[0, 1, 2].map((i) => `<td>${optionCell(x.options?.[i], g.key)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${t.people.length < t.num_people ? `<p class="gr-caption">Showing the first ${t.people.length} of ${t.num_people}.</p>` : ''}`).join('')}</details>`).join('');
+  return { steps, people };
 }
 
 function impactPanel(impact, keep) {
@@ -325,7 +361,7 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
   const [res, impact, funds] = results;
   const form = controls('plateaus', yearSelect(p) + fundSelect(p, funds?.ok ? funds.data.funds : []) + scopeSelect(p)
     + `<label>Occasional: gifts a year, at most <input type="number" name="low_frequency_max" min="1" max="51" value="${p.lowFreq}" class="gr-small"></label>${kind ? hidden('kind', kind) : ''}`, keep);
-  const ladderHead = `<h2 class="gr-part-title">Next steps: the plateau ladder</h2><p class="muted">Each giver’s weekly-equivalent giving for the year chosen here, and the next round amount above it.</p>`;
+  const ladderHead = `<h2 class="gr-part-title">Next steps: three goals</h2><p class="muted">Rare givers start giving, irregular givers give consistently, and regular givers increase. Retirement distributions and other large annual gifts are handled on their own. Funds that share an account code, such as every 40085 fund, count as one.</p>`;
   if (!res.ok) return `${banner}${queue}<section class="gr-part">${ladderHead}${form}${unavailable('The plateau report', res.data?.error || res.message)}${impactPanel(impact, keep)}</section>`;
   const d = res.data;
   const who = scopeWord(d.scope, 2);
@@ -344,9 +380,16 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
   const dist = d.distribution || [];
   const maxN = Math.max(...dist.map((x) => x.n), 1);
   const histogram = dist.length ? `<section class="gr-card"><h2>Weekly-equivalent giving</h2><div class="gr-hist">${dist.map((x) => `<span style="height:${(x.n / maxN * 100).toFixed(1)}%" title="$${x.plateau_dollars}/wk: ${x.n}"></span>`).join('')}</div><div class="gr-axisrow"><span>$${dist[0].plateau_dollars}/wk</span><span>$${dist[dist.length - 1].plateau_dollars}/wk</span></div></section>` : '';
-  return `${banner}${queue}<section class="gr-part">${ladderHead}${form}<div class="grid">${card(`Giving ${who}`, String(s.total_givers), `Weekly amounts are ${weeks}`)}${card('If each took the next step', `+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}`, 'a year, modest to generous')}${card('Occasional givers', String(s.low_frequency_givers), `${p.lowFreq} gifts a year or fewer`)}</div>${excl}
-    <section class="gr-card"><h2>Nudge targets <small>standard option</small></h2><p class="muted">Each ${who1} is grouped by the next round weekly amount above what they give now; Modest, Standard and Generous are the next three steps.</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Nudge to</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Now</th><th>Average increase</th><th>Added a year</th></tr></thead><tbody>${tierRows}<tr class="total-row"><td>Total</td><td>${s.total_givers}</td><td></td><td></td><td>+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}</td></tr></tbody></table></div></section>
-    <section class="gr-card"><h2>Who is in each step</h2>${tierPeople}</section>${occBlock}${histogram}${impactPanel(impact, keep)}</section>`;
+  const grouped = Array.isArray(d.groups) && d.groups.length ? groupBlocks(d, who, who1) : null;
+  const notYet = grouped ? (d.groups.find((g) => g.key === 'rare')?.num_people || 0) + (d.groups.find((g) => g.key === 'irregular')?.num_people || 0) : null;
+  const thirdCard = grouped ? card('Not yet regular', String(notYet), 'rare and irregular givers') : card('Occasional givers', String(s.low_frequency_givers), `${p.lowFreq} gifts a year or fewer`);
+  const targets = grouped
+    ? `${grouped.steps}<section class="gr-card"><h2>All groups</h2><p class="muted">Every ${who1} is in exactly one group. Added a year runs from the Modest to the Generous ask.</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Group</th><th>Goal</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Added a year</th></tr></thead><tbody>${d.groups.map((g) => `<tr><td>${e(g.label)}</td><td>${e(g.goal)}</td><td>${g.num_people}</td><td>${g.num_people ? `+${money(g.upside_modest_annual_cents)}–${money(g.upside_generous_annual_cents)}` : '—'}</td></tr>`).join('')}<tr class="total-row"><td>Total</td><td></td><td>${s.total_givers}</td><td>+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}</td></tr></tbody></table></div></section>`
+    : `<section class="gr-card"><h2>Nudge targets <small>standard option</small></h2><p class="muted">Each ${who1} is grouped by the next round weekly amount above what they give now; Modest, Standard and Generous are the next three steps.</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Nudge to</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Now</th><th>Average increase</th><th>Added a year</th></tr></thead><tbody>${tierRows}<tr class="total-row"><td>Total</td><td>${s.total_givers}</td><td></td><td></td><td>+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}</td></tr></tbody></table></div></section>`;
+  const whoIs = `<section class="gr-card"><h2>Who is in each step</h2>${grouped ? grouped.people : tierPeople}</section>`;
+  return `${banner}${queue}<section class="gr-part">${ladderHead}${form}<div class="grid">${card(`Giving ${who}`, String(s.total_givers), `Weekly amounts are ${weeks}`)}${card('If each took the next step', `+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}`, 'a year, modest to generous')}${thirdCard}</div>${excl}
+    ${targets}
+    ${whoIs}${occBlock}${histogram}${impactPanel(impact, keep)}</section>`;
 }
 
 // ── Giving bands ─────────────────────────────────────────────────────────────────────────────
@@ -461,6 +504,7 @@ export const GIVING_REPORTS_STYLES = `
     .gr-donut li { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:6px; }
     .gr-donut .gr-key { margin-left:0; }
     .gr-tier { margin-top:8px; border:1px solid var(--line-soft); border-radius:8px; padding:8px 12px; }
+    .gr-step { font-size:.95rem; margin:14px 0 4px; color:var(--navy); }
     .gr-tier summary { cursor:pointer; font-weight:600; color:var(--navy); }
     .gr-hist { display:flex; align-items:flex-end; gap:2px; height:120px; margin-top:10px; border-bottom:1px solid #D5DAE3; }
     .gr-hist span { flex:1; min-height:1px; background:var(--gold); border-radius:2px 2px 0 0; }
