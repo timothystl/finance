@@ -8,6 +8,8 @@
 // `window.print()` button, which is a convenience, not a builder.
 import { escapeHtml } from './render-helpers.js';
 import { BALANCE_STYLES } from './balance-pages.js';
+import { COUNCIL_REPORT_STYLES } from './council-report-pages.js';
+import { PROPERTY_CHART_STYLES } from './property-charts.js';
 
 // The print page's CSP forbids inline script, so the button's handler is served as its own file.
 export const PRINT_BUTTON_JS = "document.getElementById('print-now').addEventListener('click', function () { window.print(); });\n";
@@ -86,12 +88,29 @@ export const PRINT_STYLES = `
   }
 `;
 
+// The council giving report's own styles read the app's color variables, which a print page does not
+// define; these give it the same look on paper (stacked on one column, no screen-only chrome).
+const PRINT_COUNCIL_FIT = `
+  .print-doc { --line:#d9dfda; --line-soft:#eef1ee; --navy:#243642; --ink:#16213A; --muted:#5B6475; --faint:#8a93a6; --green:#1f6b45; --gold-ink:#8A5A12; --card:#fff; }
+  .print-doc .panel { border:1px solid var(--line); border-radius:8px; padding:.7rem .9rem; margin:.6rem 0; break-inside:avoid; }
+  .print-doc .panel h2 { font-size:11pt; margin:0 0 .3rem; }
+  .print-doc .cr-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; margin-top:.5rem; }
+  .print-doc .cr-kpi { padding:.5rem .6rem; }
+  .print-doc .cr-kpi strong { font-size:15pt; margin:.2rem 0; }
+  .print-doc .cr-kpi small, .print-doc .cr-kpi span { font-size:8pt; }
+  .print-doc .cr-body { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:.6rem; margin-top:.6rem; }
+  .print-doc .cr-navy { padding:.7rem .9rem; break-inside:avoid; }
+  .print-doc .cr-mix div { font-size:9pt; }
+  .print-doc .cr-navy-con p { font-size:9pt; }
+  .print-doc .muted-line, .print-doc .lede { font-size:9pt; color:#555; }
+`;
+
 // Reports the board packet print can include. Each entry is rendered through the normal page route
 // (`?section=&page=&print=1&fragment=1`), so a viewer only ever gets what that page allows them.
 export const BOARD_PACKET_ITEMS = Object.freeze([
   { key: 'health', label: 'Financial Health', section: 'health', pages: ['overview'] },
-  { key: 'giving', label: 'Giving Report to the Council (this month, General Fund, with the other categories)', section: 'giving-analytics', pages: ['council'] },
-  { key: 'church', label: 'Church Report (overview, detail, multi-year trend, budget vs actual)', section: 'church', pages: ['overview', 'income-expense', 'trend', 'budget-actual'] },
+  { key: 'giving', label: 'Giving Report to the Council (General Fund summary)', section: 'giving-analytics', pages: ['council'], pageParams: { council: { compact: '1' } } },
+  { key: 'church', label: 'Church Report (overview, multi-year trend, budget vs actual)', section: 'church', pages: ['overview', 'trend', 'budget-actual'] },
   { key: 'attendance', label: 'Attendance (this year and multi-year)', section: 'attendance', pages: ['overview', 'trend'] },
   { key: 'balance', label: 'Balance Sheet (position, account detail, and multi-year position)', section: 'balance', pages: ['position', 'account-detail', 'multi-year'] },
   { key: 'daycare', label: 'Daycare Report (overview and budget comparison)', section: 'daycare', pages: ['overview', 'budget-comparison'] },
@@ -146,7 +165,7 @@ export function renderPrintDocument({ documentTitle, backHref, contentHtml, rele
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(documentTitle)} · Timothy Finance</title>
   <link rel="icon" href="/assets/finance-mark.png">
-  <style>${PRINT_STYLES}${BALANCE_STYLES}</style>
+  <style>${PRINT_STYLES}${BALANCE_STYLES}${COUNCIL_REPORT_STYLES}${PROPERTY_CHART_STYLES}${PRINT_COUNCIL_FIT}</style>
 </head>
 <body class="print-body">
   <div class="print-toolbar"><a href="${escapeHtml(backHref)}">← Back to Finance</a><button type="button" id="print-now">Print / Save as PDF</button></div>
