@@ -183,3 +183,44 @@ export function buildReconciliation({ copy, connectMonthlyCents, year, now = new
     allMatch: connectKnown && months.every((m) => m.matches),
   };
 }
+
+// ── Which gifts differ ──────────────────────────────────────────────────────────────────────
+// For one month: Finance's copy of Breeze, line by line (one line per fund a gift was split across),
+// against Connect's gift lines for the same days. Lines are matched by day and amount, as many times
+// as each appears, so what is left over on either side is exactly the gifts the two disagree about.
+// Connect's list carries donor names; they are never shown here, only the day, amount, fund and method.
+export async function readCopyLines(db, year, month) {
+  const { start, end } = monthRange(year, month);
+  if (!db || !(await ensureFinanceOwnedSchema(db, 'breezeGiving'))) return [];
+  try {
+    return (await db.prepare(`SELECT g.payment_id, g.person_ref, g.paid_on, g.method, f.fund_name, f.amount_cents
+      FROM finance_breeze_gifts g JOIN finance_breeze_gift_funds f ON f.payment_id = g.payment_id
+      WHERE g.paid_on BETWEEN ? AND ? ORDER BY g.paid_on, g.payment_id`).bind(start, end).all()).results || [];
+  } catch { return []; }
+}
+
+export function diffGiftLines({ copyLines, connectRows }) {
+  const key = (day, cents) => `${day}|${cents}`;
+  const connect = new Map();
+  for (const r of connectRows) {
+    const k = key(String(r.gift_date || '').slice(0, 10), r.amount);
+    (connect.get(k) || connect.set(k, []).get(k)).push(r);
+  }
+  const onlyInBreeze = [];
+  const possibleDuplicates = new Set();
+  const seenGift = new Map();
+  for (const line of copyLines) {
+    const k = key(line.paid_on, line.amount_cents);
+    const bucket = connect.get(k);
+    if (bucket && bucket.length) bucket.pop();
+    else onlyInBreeze.push(line);
+    const sameGift = `${line.person_ref}|${k}`;
+    if (seenGift.has(sameGift) && seenGift.get(sameGift) !== line.payment_id) { possibleDuplicates.add(line.payment_id); possibleDuplicates.add(seenGift.get(sameGift)); }
+    else seenGift.set(sameGift, line.payment_id);
+  }
+  const onlyInConnect = [...connect.values()].flat();
+  return {
+    onlyInBreeze: onlyInBreeze.map((l) => ({ paymentId: l.payment_id, day: l.paid_on, cents: l.amount_cents, method: l.method, fund: l.fund_name, possibleDuplicate: possibleDuplicates.has(l.payment_id) })),
+    onlyInConnect: onlyInConnect.map((r) => ({ day: String(r.gift_date || '').slice(0, 10), cents: r.amount, method: r.method || '', fund: r.fund_name || '', processor: r.processor || '' })),
+  };
+}

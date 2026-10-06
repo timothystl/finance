@@ -4788,7 +4788,7 @@ export default {
         const canSaveTemplate = Boolean(finalSelection) && roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
         const breezeGivingYear = Number(url.searchParams.get('year'));
         const breezeGivingView = section.id === 'data' && effectivePageId === 'breeze-giving' && roleResult.ok && roleResult.role === 'admin'
-          ? await loadBreezeGivingView(env, env.FINANCE_DB, accessJwt, Number.isInteger(breezeGivingYear) && breezeGivingYear >= 2000 && breezeGivingYear <= new Date().getUTCFullYear() ? breezeGivingYear : new Date().getUTCFullYear()) : null;
+          ? await loadBreezeGivingView(env, env.FINANCE_DB, accessJwt, Number.isInteger(breezeGivingYear) && breezeGivingYear >= 2000 && breezeGivingYear <= new Date().getUTCFullYear() ? breezeGivingYear : new Date().getUTCFullYear(), new Date(), Number(url.searchParams.get('detail')) || null) : null;
         const attendance = section.id === 'attendance' ? await fetchLiveAttendanceSummary(env, defaultLiveChurchReportFiscalYear()) : null;
         const [balancePropertyValue, balanceMortgageHistory, propertyMortgageHistory, propertyRentGrowthSaved] = await Promise.all([balancePropertyValueLoad, balanceMortgageHistoryLoad, propertyMortgageHistoryLoad, propertyRentGrowth]);
         const printMode = url.searchParams.get('print') === '1';
