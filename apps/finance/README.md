@@ -30,7 +30,7 @@ placeholder). Each section is also gated by the viewer's role and permission, ch
 | Payroll (admin only) | Run payroll, Staff entry, Import from MDO, Email and print, History | Relayed to Website Admin |
 | HR and Staff (admin only) | Directory, org chart, reviews, checks, trainings, policies, benefits, volunteer screening | Finance database |
 
-Nudges and next steps group givers as rare (start giving), irregular (automate at their average gift, no guessed increase), regular (a gift a month or more; increase by +$10, +$25 or +$45 a week by current level) and large annual gifts such as retirement distributions. Connect computes the groups, for member households only (an active member, or a household with one); Funds sharing a leading account code (every `40085` fund) count as one fund there, and the fund picker lists them once. Finance falls back to the older single ladder when Connect has not yet been updated.
+Nudges and next steps group givers as rare (start giving), irregular (automate at their average gift, no guessed increase), regular (a gift a month or more; increase by +$10, +$25 or +$45 a week by current level) and large annual gifts such as retirement distributions. Connect computes the groups, for member households only (an active member, or a household with one); Funds sharing a leading account code (every `40085` fund) count as one fund there, and the fund picker lists them once. A household placed in the wrong group can be moved by hand (Giving edit) and stays there until set back to automatic; Connect keeps that. Finance falls back to the older single ladder when Connect has not yet been updated.
 
 A separate familiar accounting layout is served at `/accounting` (see ARCHITECTURE).
 

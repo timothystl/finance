@@ -29,7 +29,7 @@ import { renderGymIncomePage } from './gym-income-pages.js';
 import { fetchGymIncome, describeGymIncomeFailure } from './gym-income-client.js';
 import { describeGivingBatchFailure, fetchGivingDeposit, fetchGivingBatchLedger, fetchGivingBatchWorkspace, fetchGivingTransactions, fetchOnlineGiving, postGivingBatchWrite, fetchGivingOnlineSettings, postGivingOnlineSettingsWrite } from './connect-giving-batch-client.js';
 import { GIFT_TRANSACTIONS_STYLES, buildTransactionsCsv, normalizeTransactionParams, renderOnlineGivingPage, renderTransactionsPage, transactionsCsvFilename, transactionsCsvParams } from './gift-transactions-pages.js';
-import { fetchGivingAnalytics, fetchGivingAnalyticsPeople, fetchGivingBoard, fetchGivingReport, postGivingBoardEmail, postGivingFollowupWrite, postGivingImpactWrite, postGivingFundPassThrough, fetchGivingFundCleanup, postGivingFundCleanup } from './connect-giving-analytics-client.js';
+import { fetchGivingAnalytics, fetchGivingAnalyticsPeople, fetchGivingBoard, fetchGivingReport, postGivingBoardEmail, postGivingFollowupWrite, postGivingNudgeGroupWrite, postGivingImpactWrite, postGivingFundPassThrough, fetchGivingFundCleanup, postGivingFundCleanup } from './connect-giving-analytics-client.js';
 import { FUND_CLEANUP_STYLES, renderFundCleanup } from './fund-cleanup-pages.js';
 import { GIVING_REPORTS_STYLES, givingReportParams, givingReportRequests, impactStatementsFromForm, renderGivingReportPage } from './giving-reports-pages.js';
 import { DONOR_LETTERS_STYLES, kindOfPage, renderDonorLettersPage } from './donor-letters-pages.js';
@@ -1101,6 +1101,30 @@ async function handleGivingFundCleanup(request, env, url) {
     ? `Combined into ${r.kept || 'the kept fund'}: ${r.moved_gifts || 0} gift${r.moved_gifts === 1 ? '' : 's'} moved, ${r.removed || 0} fund${r.removed === 1 ? '' : 's'} removed.`
     : `${r.changed ?? body.fund_ids.length} fund${(r.changed ?? body.fund_ids.length) === 1 ? '' : 's'} ${op === 'retire' ? 'retired' : 'restored'}.`;
   return back({ status: 'ok', msg });
+}
+
+// Nudges and next steps: move a household into another group, or back to automatic. Connect keeps
+// it (giving-nudge-group-write-v1) and re-checks Giving edit access for the signed-in person.
+const NUDGE_GROUP_KEYS = new Set(['', 'rare', 'irregular', 'regular', 'large_gift']);
+async function handleGivingNudgeGroupWrite(request, env, url) {
+  const params = (extra) => new URLSearchParams({ section: 'giving-reports', page: 'plateaus', ...extra });
+  const back = (extra) => response(null, { status: 303, headers: { Location: `/?${params(extra).toString()}` } });
+  if (!isSameOriginPost(request, url)) return back({ status: 'error', message: 'That form did not come from Timothy Finance.' });
+  let form;
+  try { form = await request.formData(); } catch { return back({ status: 'error', message: 'The form could not be read.' }); }
+  const field = (name) => String(form.get(name) || '').trim().slice(0, 40);
+  // Keep the report where it was: the same year, count-by, fund and occasional setting.
+  const keep = {};
+  if (/^\d{4}$/.test(field('year'))) keep.year = field('year');
+  if (['household', 'person'].includes(field('scope'))) keep.scope = field('scope');
+  if (/^\d{1,9}$/.test(field('fund_id'))) keep.fund_id = field('fund_id');
+  if (/^\d{1,2}$/.test(field('low_frequency_max'))) keep.low_frequency_max = field('low_frequency_max');
+  const key = field('recipient_key');
+  const group = field('group');
+  if (!/^[hp]\d{1,9}$/.test(key) || !NUDGE_GROUP_KEYS.has(group)) return back({ ...keep, status: 'error', message: 'Unknown group.' });
+  const result = await postGivingNudgeGroupWrite(env, request.headers.get('Cf-Access-Jwt-Assertion') || '', { recipient_key: key, group });
+  if (!result.ok) return back({ ...keep, status: 'error', message: describeGivingBatchFailure(result).slice(0, 200) });
+  return back({ ...keep, status: 'ok', msg: group ? 'Moved.' : 'Set back to automatic.' });
 }
 
 async function handleGivingFollowupWrite(request, env, url) {
@@ -2225,6 +2249,7 @@ export default {
     if (route.id === 'giving-followup-write-v1') {
       return handleGivingFollowupWrite(request, env, url);
     }
+    if (route.id === 'giving-nudge-group-write-v1') return handleGivingNudgeGroupWrite(request, env, url);
     if (route.id === 'giving-fund-passthrough-write-v1') return handleGivingFundPassThrough(request, env, url);
     if (route.id === 'giving-fund-cleanup-write-v1') return handleGivingFundCleanup(request, env, url);
 
