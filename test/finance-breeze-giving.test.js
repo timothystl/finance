@@ -4,7 +4,7 @@ import worker from '../apps/finance/shell.js';
 import { describeBreezeConfig, makeBreezeClient, normalizeBreezeSubdomain } from '../apps/finance/breeze-client.js';
 import { resetEnsuredSchemasForTests } from '../apps/finance/finance-owned-schema.js';
 import {
-  buildReconciliation, monthRange, normalizeBreezeGift, readCopyMonthly, syncBreezeGivingYear,
+  buildReconciliation, diffGiftLines, monthRange, normalizeBreezeGift, readCopyLines, readCopyMonthly, syncBreezeGivingYear,
 } from '../apps/finance/breeze-giving-service.js';
 
 function sqliteDb() {
@@ -136,6 +136,31 @@ describe('Breeze giving copy', () => {
   });
 });
 
+describe('which gifts differ', () => {
+  it('matches gift lines by day and amount, as often as each appears, and leaves only the real differences', async () => {
+    const db = sqliteDb();
+    const april = [
+      rec(1, '2026-04-05', '100.00'), rec(2, '2026-04-05', '100.00'), rec(3, '2026-04-05', '100.00'),
+      rec(4, '2026-04-12', '55.00'),
+    ];
+    april[1].person_id = april[0].person_id; // the same giver, day and amount twice
+    await syncBreezeGivingYear(KEYS, db, { year: 2026, now: new Date('2026-04-30T12:00:00Z'), fetchImpl: fakeBreeze({ '2026-04': april }).fetchImpl });
+    const lines = await readCopyLines(db, 2026, 4);
+    expect(lines).toHaveLength(4);
+    const connectRows = [
+      { gift_date: '2026-04-05', amount: 10000, method: 'check', fund_name: 'General Fund' },
+      { gift_date: '2026-04-05', amount: 10000, method: 'check', fund_name: 'General Fund' },
+      { gift_date: '2026-04-12', amount: 5500, method: 'check', fund_name: 'General Fund' },
+      { gift_date: '2026-04-20', amount: 2500, method: 'card', fund_name: 'Music', processor: 'stax' },
+    ];
+    const diff = diffGiftLines({ copyLines: lines, connectRows });
+    expect(diff.onlyInBreeze).toHaveLength(1);
+    expect(diff.onlyInBreeze[0]).toMatchObject({ day: '2026-04-05', cents: 10000 });
+    expect(diff.onlyInConnect).toEqual([{ day: '2026-04-20', cents: 2500, method: 'card', fund: 'Music', processor: 'stax' }]);
+    expect(JSON.stringify(diff)).not.toMatch(/person_name|first_name/);
+  });
+});
+
 describe('reconciliation against Connect', () => {
   it('marks a month as matching only when the two agree to the cent', () => {
     const copy = { cents: [15025, 7500, ...new Array(10).fill(0)], gifts: [2, 1, ...new Array(10).fill(0)] };
@@ -184,6 +209,31 @@ describe('Breeze giving page and sync route', () => {
     const viewer = await get('/?section=data&page=breeze-giving&year=2026', appEnv({ role: 'finance' }));
     expect(viewer.html).toContain('Only an admin can see or run the Breeze giving copy');
     expect(viewer.html).not.toContain('Copy 2026 from Breeze');
+  });
+
+  it('links a differing month to its gifts and shows the ones only one side has', async () => {
+    const db = sqliteDb();
+    await syncBreezeGivingYear(KEYS, db, { year: 2026, now: new Date('2026-01-31T12:00:00Z'), fetchImpl: fakeBreeze({ '2026-01': [rec(1, '2026-01-04', '100.00'), rec(2, '2026-01-11', '50.00')] }).fetchImpl });
+    const env = appEnv({ db });
+    const inner = env.CONNECT_SERVICE.fetch;
+    env.CONNECT_SERVICE = {
+      async fetch(req) {
+        const { pathname } = new URL(req.url);
+        if (pathname === '/api/contracts/giving-board-v1') return new Response(JSON.stringify({ year: 2026, categories: { all: { monthly: { current: [10000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } } } }));
+        if (pathname === '/api/contracts/giving-transactions-v1') {
+          return new Response(JSON.stringify({ page: { total: 2 }, rows: [{ gift_date: '2026-01-04', amount: 10000, method: 'check', fund_name: 'General Fund', person_name: 'Jane Donor', voided_at: '' }, { gift_date: '2026-01-04', amount: 7700, method: 'cash', fund_name: 'Music', voided_at: '2026-02-01', person_name: 'Voided Donor' }] }));
+        }
+        return inner(req);
+      },
+    };
+    const main = await get('/?section=data&page=breeze-giving&year=2026', env);
+    expect(main.html).toContain('show the gifts');
+    const detail = await get('/?section=data&page=breeze-giving&year=2026&detail=1', env);
+    expect(detail.html).toContain('January 2026: gifts the two sides disagree about');
+    expect(detail.html).toContain('In Breeze (Finance’s copy) but not in Connect');
+    expect(detail.html).toContain('2026-01-11');
+    expect(detail.html).not.toContain('Jane Donor');
+    expect(detail.html).not.toContain('Voided Donor');
   });
 
   it('refuses the sync for a non-admin and explains it', async () => {
