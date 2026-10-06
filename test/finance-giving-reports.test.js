@@ -34,7 +34,7 @@ const REPORTS = {
           people: [{ id: 'h:9', name: 'Irregular Household', total_cents: 120000, weekly_cents: 2300, gifts: 3, months_given: 3, options: [{ label: 'Automate', new_annual_total_cents: 480000, annual_delta_cents: 360000 }] }] }] },
       { key: 'regular', label: 'Regular givers', goal: 'Increase', num_people: 1, upside_modest_annual_cents: 52000, upside_standard_annual_cents: 130000, upside_generous_annual_cents: 208000,
         steps: [{ key: 'w25', label: '+$25/wk band', num_people: 1, now_min_cents: 4000, now_max_cents: 4000, avg_now_cents: 4000, avg_weekly_increase_cents: 2500, upside_modest_annual_cents: 52000, upside_standard_annual_cents: 130000, upside_generous_annual_cents: 208000,
-          people: [{ id: 'h:1', name: 'Sample Household', weekly_cents: 4000, total_cents: 160000, gifts: 40, months_given: 9, cadence_label: 'weekly', options: [{ label: 'Modest', target_cents: 5000, delta_cents: 1000, annual_delta_cents: 52000, impact_text: 'a month of Sunday school supplies' }, { label: 'Standard', target_cents: 6500, delta_cents: 2500, annual_delta_cents: 130000 }, { label: 'Generous', target_cents: 8000, delta_cents: 4000, annual_delta_cents: 208000 }] }] }] },
+          people: [{ id: 'h:1', recipient_key: 'h1', moved_from: 'irregular', name: 'Sample Household', weekly_cents: 4000, total_cents: 160000, gifts: 40, months_given: 9, cadence_label: 'weekly', options: [{ label: 'Modest', target_cents: 5000, delta_cents: 1000, annual_delta_cents: 52000, impact_text: 'a month of Sunday school supplies' }, { label: 'Standard', target_cents: 6500, delta_cents: 2500, annual_delta_cents: 130000 }, { label: 'Generous', target_cents: 8000, delta_cents: 4000, annual_delta_cents: 208000 }] }] }] },
       { key: 'large_gift', label: 'Large annual gifts', goal: 'Thank and invite more', num_people: 0, steps: [] },
     ],
     tiers: [{ target_cents: 5000, num_people: 1, plateau_min_cents: 4000, plateau_max_cents: 4000, avg_weekly_increase_cents: 1000, upside_modest_annual_cents: 52000, upside_generous_annual_cents: 156000,
@@ -59,6 +59,7 @@ function env(role = 'finance', permissions = { finance: 'edit', giving: 'edit' }
       const u = new URL(req.url);
       if (u.pathname.endsWith('staff-role-v1')) return Response.json({ role, permissions, username: 'tester' });
       calls.push({ path: u.pathname, query: Object.fromEntries(u.searchParams), method: req.method, body: req.method === 'POST' ? await req.json() : null });
+      if (u.pathname.endsWith('giving-nudge-group-write-v1')) return Response.json({ ok: true });
       if (u.pathname.endsWith('giving-impact-write-v1')) return Response.json({ ok: true, statements: calls.at(-1).body.statements });
       const name = u.searchParams.get('report');
       return REPORTS[name] ? Response.json({ contract: 'connect.giving-reports.v1', report: name, ...REPORTS[name] }) : Response.json({ error: 'Unknown giving report' }, { status: 404 });
@@ -146,6 +147,21 @@ describe('Finance › Giving reports', () => {
     }
   });
 
+  it('relays a move to another group to Connect and returns to the same report', async () => {
+    const e = env();
+    const res = await call(e, '/api/v1/giving-nudge-group', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ recipient_key: 'h1', group: 'regular', year: '2026', scope: 'household', fund_id: '4', low_frequency_max: '2' }) });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('Location')).toBe('/?section=giving-reports&page=plateaus&year=2026&scope=household&fund_id=4&low_frequency_max=2&status=ok&msg=Moved.');
+    expect(e.calls.find((c) => c.path.endsWith('giving-nudge-group-write-v1')).body).toEqual({ recipient_key: 'h1', group: 'regular' });
+    const back = await call(e, '/api/v1/giving-nudge-group', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ recipient_key: 'h1', group: '' }) });
+    expect(back.headers.get('Location')).toContain('Set+back+to+automatic.');
+    const bad = await call(e, '/api/v1/giving-nudge-group', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ recipient_key: "h1' OR 1=1", group: 'regular' }) });
+    expect(bad.headers.get('Location')).toContain('status=error');
+    const cross = await call(e, '/api/v1/giving-nudge-group', { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' }, body: new URLSearchParams({ recipient_key: 'h1', group: 'regular' }) });
+    expect(cross.headers.get('Location')).toContain('status=error');
+    expect(e.calls.filter((c) => c.path.endsWith('giving-nudge-group-write-v1'))).toHaveLength(2);
+  });
+
   it('shows plateaus with each step, impact statements, and bands with the uplift', async () => {
     const e = env();
     const plateaus = await page(e, 'plateaus', '&year=2026&fund_id=4&low_frequency_max=2');
@@ -159,6 +175,11 @@ describe('Finance › Giving reports', () => {
     expect(plateaus).toContain('Irregular givers <small>Automate their giving</small>');
     expect(plateaus).toContain('<b>$400/mo</b><small>$4,800 a year, +$3,600</small>');
     expect(plateaus).toContain('<th>If automated</th>');
+    // Giving edit can move a household: the form names the household and keeps the report's settings.
+    expect(plateaus).toContain('action="/api/v1/giving-nudge-group"');
+    expect(plateaus).toContain('name="recipient_key" value="h1"');
+    expect(plateaus).toContain('name="low_frequency_max" value="2"');
+    expect(plateaus).toContain('moved by hand; the rule would say Irregular');
     expect(plateaus).toContain('<b>$40/mo</b>');
     // Funds sharing an account code are listed once, and any one of them selects the group.
     expect(plateaus).toContain('<option value="4" selected>40085 — all (General Fund, Lent)</option>');
