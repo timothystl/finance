@@ -18,6 +18,8 @@ placeholder). Each section is also gated by the viewer's role and permission, ch
 | Financial Health, Charts, Board packet | Summary and detail, revenue and expense mix, cash and reserve, giving pace and concentration, packet builder and print, a per-person "final report" list (Add to final report on each report) and a saved monthly cover-letter template | Reads Finance reports plus Giving totals from Connect |
 | Gift Entry | Enter a batch, Transactions, Online giving, Funds, Reconciliation to bank, Batch reports, online form settings | Connect (relayed; Finance stores nothing) |
 | Giving, Giving reports, Donor letters | Council report, trends, year over year, pledges, what-if, statements, bands, nudges, letters and receipts | Connect (relayed) |
+
+Nudges and next steps group givers as rare (start giving), irregular (give consistently), regular (increase by +$10, +$25 or +$45 a week by current level) and large annual gifts such as retirement distributions. Connect computes the groups; Funds sharing a leading account code (every `40085` fund) count as one fund there, and the fund picker lists them once. Finance falls back to the older single ladder when Connect has not yet been updated.
 | Church Report, Balance Sheet, Daycare Report, Chart of Accounts | Overview, detail, multi-year trends, imports, daycare entries and allocation, account layout and board categories, Access and roles view | Finance database |
 | Commercial Property | Operating results, rent roll, receivables, bank rec, reserves, capital, valuation, forecast, debt, acquisition model | Finance database |
 | Facilities | Assets, service history, preventive maintenance, capital projects, files (private storage) | Finance database and private R2 bucket |

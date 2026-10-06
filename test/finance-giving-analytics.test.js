@@ -354,7 +354,7 @@ describe('Giving analytics pages (Finance v3)', () => {
     expect(moved.headers.get('Location')).toBe('/?section=giving-reports&page=plateaus&kind=stopped');
     const html = await (await reports(env, '&page=plateaus&kind=stopped')).text();
     expect(html).toContain('Follow-up queue');
-    expect(html.indexOf('Follow-up queue')).toBeLessThan(html.indexOf('Next steps: the plateau ladder'));
+    expect(html.indexOf('Follow-up queue')).toBeLessThan(html.indexOf('Next steps: three goals'));
     expect(html).toContain('href="/?section=giving-reports&amp;page=plateaus&amp;year=2026&amp;scope=household&amp;low_frequency_max=3&amp;kind=first_time"');
     expect(html).toContain('Anna Schreiber');
     expect(html).toContain('Done this month');
