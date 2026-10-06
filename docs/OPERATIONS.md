@@ -94,6 +94,7 @@ must be exactly one refresh-token writer; never copy a token between apps or run
 | `CLOUDFLARE_ACCOUNT_ID` | same (an identifier, not a credential) | Deploys and the recovery drill |
 | `FINANCE_CONTRACT_API_KEY`, `FINANCE_PAYROLL_CONTRACT_KEY` | Cloudflare Worker secrets (and the matching key on the receiving Connect / Website Admin Worker) | Authenticating calls to Connect and Website Admin |
 | `FINANCE_QB_CLIENT_ID`, `FINANCE_QB_CLIENT_SECRET` | Cloudflare Worker secrets | QuickBooks OAuth |
+| `BREEZE_SUBDOMAIN`, `BREEZE_API_KEY` | Cloudflare Worker secrets on `timothy-finance-app` (Finance's own, never copied from Connect) | Read-only Breeze giving copy (Data & Imports › Breeze giving copy) |
 | `MYMDO_API_URL`, `MYMDO_API_KEY`, `MYMDO_ROOMS_API_URL` | Cloudflare Worker settings, only if Finance runs the myMDO sync | Daycare sync |
 
 The Cloudflare token audit and rotation map is

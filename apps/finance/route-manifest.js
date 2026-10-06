@@ -353,6 +353,8 @@ const ROUTES = [
   // Board packet print (print-pages.js): a picker, then a composed print document. It renders other
   // shell pages internally with the viewer's own headers, so it adds no data source of its own.
   { id: 'print-board-packet', paths: ['/print/board-packet'], methods: READ_METHODS, dataSource: 'none' },
+  // Admin-only: reads Breeze's giving for a year into Finance's side-by-side copy (breeze-giving-service.js).
+  { id: 'breeze-giving-sync-v1', paths: ['/api/v1/breeze-giving-sync'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true },
   // One person's ordered list of report screens for the final report (packet-selection-service.js).
   { id: 'packet-selection-v1', paths: ['/api/v1/packet-selection'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true },
   // Saves the board packet's monthly cover-letter template to Finance's own finance_settings row.

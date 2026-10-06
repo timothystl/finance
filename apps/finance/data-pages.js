@@ -234,6 +234,7 @@ export function renderDataPage({
   return `${renderStatusSection(dataStatus)}
     ${renderConnections({ quickbooksOwn, quickbooksEnabled, dataStatus, packetYear })}
     ${renderImports(importStatus, canManage)}
+    ${canManage ? `<section class="report" aria-label="Breeze giving copy">${renderSectionHeading({ eyebrow: 'Giving move', heading: 'Breeze giving copy', badge: 'Admin only' })}<p>Finance’s side-by-side copy of Breeze giving, checked against Connect. ${link('/?section=data&page=breeze-giving', 'Open the Breeze giving copy')}</p></section>` : ''}
     ${canManage ? renderChurchBudgetXlsxImportForm(churchBudgetImportStatus, churchBudgetImportMessage) : ''}
     ${renderDaycareChurchBudgetPreview({ year: daycarePreviewYear, preview: daycarePreview, canManage, importStatus: daycareImportStatus, importMessage: daycareImportMessage })}
     ${renderLinkList('Hand-entered adjustments', 'Data & Imports', 'Hand-entered adjustments', 'Daycare, property, corrections', ADJUSTMENTS, canManage, 'Figures typed in by hand. Each form lives beside the report it changes.')}

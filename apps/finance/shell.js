@@ -182,6 +182,8 @@ import { PROPERTY_CHART_STYLES } from './property-charts.js';
 import { renderCompensationPage } from './compensation-pages.js';
 import { renderPlanningPage } from './planning-pages.js';
 import { renderAttendancePage } from './attendance-pages.js';
+import { loadBreezeGivingView, renderBreezeGivingPage } from './breeze-giving-pages.js';
+import { syncBreezeGivingYear } from './breeze-giving-service.js';
 import { changeSelection, isSelectable, itemId, itemLabel, normalizeItem, readSelection, selectionOwner } from './packet-selection-service.js';
 import { fetchLiveAttendanceSummary } from './finance-attendance-client.js';
 import { readCoverTemplate, saveCoverTemplate } from './board-packet-cover-service.js';
@@ -1840,6 +1842,12 @@ function renderSectionBody(ctx) {
   }
   if (section.id === 'packet') {
     return renderPacketPage({ churchReportLive, balanceSheetLive: balanceSheet, churchTrendLive, giving, givingSource, selection: ctx.finalSelection || null, coverTemplate: ctx.coverTemplate || '', canSaveTemplate: Boolean(ctx.canSaveTemplate), templateSaved: ctx.searchParams?.get('saved') === '1' });
+  }
+  if (section.id === 'data' && page.id === 'breeze-giving') {
+    return renderBreezeGivingPage({
+      isAdmin: roleResult.ok && roleResult.role === 'admin', view: ctx.breezeGivingView,
+      status: ctx.searchParams.get('status'), message: ctx.searchParams.get('message'),
+    });
   }
   if (section.id === 'data') {
     // Imports, removals and classification edits are admin-only on Connect's side (except the
@@ -3968,6 +3976,19 @@ export default {
     // reports. Every piece is rendered by the shell route itself (print=1&fragment=1) with the
     // viewer's own headers, so each keeps its own permission check; a refused or failed piece is
     // named as left out rather than silently dropped.
+    if (route.id === 'breeze-giving-sync-v1') {
+      const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion') || '';
+      const roleResult = await fetchVerifiedRole(env, accessJwt);
+      let form;
+      try { form = await request.formData(); } catch { form = null; }
+      const year = Number(form && form.get('year'));
+      const back = (status, message) => response(null, { status: 303, headers: { Location: `/?${new URLSearchParams({ section: 'data', page: 'breeze-giving', ...(Number.isInteger(year) ? { year: String(year) } : {}), status, message }).toString()}` } });
+      if (!roleResult.ok || roleResult.role !== 'admin') return back('error', 'Only an admin can copy giving from Breeze.');
+      const result = await syncBreezeGivingYear(env, env.FINANCE_DB, { year, runBy: selectionOwner(roleResult) });
+      if (!result.ok) return back('error', result.error);
+      return back('ok', `Copied ${year}: ${result.added} added, ${result.updated} corrected, ${result.removed} removed.${result.message ? ` ${result.message}` : ''}`);
+    }
+
     if (route.id === 'packet-selection-v1') {
       const roleResult = await fetchVerifiedRole(env, request.headers.get('Cf-Access-Jwt-Assertion') || '');
       const toBack = (rawBack) => {
@@ -4765,6 +4786,9 @@ export default {
           ? await readSelection(env.FINANCE_DB, finalSelectionOwner) : null;
         const coverTemplate = finalSelection && section.id === 'packet' ? ((await readCoverTemplate(env.FINANCE_DB)) ?? DEFAULT_COVER_TEMPLATE) : '';
         const canSaveTemplate = Boolean(finalSelection) && roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
+        const breezeGivingYear = Number(url.searchParams.get('year'));
+        const breezeGivingView = section.id === 'data' && effectivePageId === 'breeze-giving' && roleResult.ok && roleResult.role === 'admin'
+          ? await loadBreezeGivingView(env, env.FINANCE_DB, accessJwt, Number.isInteger(breezeGivingYear) && breezeGivingYear >= 2000 && breezeGivingYear <= new Date().getUTCFullYear() ? breezeGivingYear : new Date().getUTCFullYear()) : null;
         const attendance = section.id === 'attendance' ? await fetchLiveAttendanceSummary(env, defaultLiveChurchReportFiscalYear()) : null;
         const [balancePropertyValue, balanceMortgageHistory, propertyMortgageHistory, propertyRentGrowthSaved] = await Promise.all([balancePropertyValueLoad, balanceMortgageHistoryLoad, propertyMortgageHistoryLoad, propertyRentGrowth]);
         const printMode = url.searchParams.get('print') === '1';
@@ -4777,7 +4801,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,

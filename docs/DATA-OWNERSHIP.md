@@ -1,7 +1,8 @@
 # Data ownership
 
-Finance never creates a second donor, people, or Giving ledger, and never holds a copy of another
-app's secrets or database. Never put secrets or personal, giving, or payroll records in logs,
+Finance does not create a second donor or people list, and never holds a copy of another app's secrets
+or database. The one deliberate exception is the staged giving move below, which Andrew began on
+October 5, 2026. Never put secrets or personal, giving, or payroll records in logs,
 fixtures, or documentation.
 
 ## Finance owns (database `timothy-finance-db`)
@@ -30,6 +31,23 @@ statements and letters, online giving settings, pledges, and Giving analytics. F
 through versioned `giving-*` and `staff-role-v1` contracts and relays Giving writes; it stores none of
 them. Council Giving access is aggregate and anonymous only. Connect publishes the contracts that
 `contracts/validators/` parse.
+
+## Giving move in progress (started October 5, 2026)
+
+Andrew's goal is for Finance to own giving and for Connect's financial parts to be removed; Breeze stays
+in use for now and its payments continue as a payment processor until people move on (Breeze itself is
+no longer paid for from the start of the new year). The move is staged, and **Connect stays the
+authoritative record until the writer is switched on purpose** (see Rules for data moves below).
+
+- **Step 1 (this change): a side-by-side copy.** Finance reads Breeze's giving list into
+  `finance_breeze_gifts`, `finance_breeze_gift_funds` and `finance_breeze_sync_runs` (migration 0019) and
+  checks its monthly totals against Connect's to the cent on Data & Imports › Breeze giving copy (admin
+  only). The copy holds no names, only Breeze's person number, date, amount, method and funds. Nothing in
+  Finance's reports reads it yet. Finance holds its own Breeze credentials as Worker secrets
+  (`BREEZE_SUBDOMAIN`, `BREEZE_API_KEY`), never copied from Connect, never stored in a database or logged.
+- Next steps, each only after the one before reconciles: Finance reports read their own giving data; gift
+  entry, batches, deposits, statements, pledges and the online giving form move; Connect's financial parts
+  are removed. People, households and roles stay in Connect.
 
 ## Website owns
 
