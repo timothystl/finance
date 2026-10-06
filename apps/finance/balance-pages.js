@@ -320,7 +320,7 @@ function renderUnclassifiedWarning(equityReclass) {
 // reading), compared with the same account's prior-year rolled-up total (by path, else by account
 // number or name -- see buildPriorBalanceLookup); an account with no prior entry reads "new this
 // year" rather than a misleading $0.
-function renderYearOverYear(accounts, fiscalYear, prior) {
+export function renderYearOverYear(accounts, fiscalYear, prior, { hideZero = true } = {}) {
   const priorYear = fiscalYear - 1;
   const heading = panelHeading(`${fiscalYear} vs. ${priorYear}`);
   if (!prior || !prior.ok || !prior.accounts.length) {
@@ -331,7 +331,13 @@ function renderYearOverYear(accounts, fiscalYear, prior) {
   }
   const current = presentNetAssets(accounts).accounts;
   const priorOf = buildPriorBalanceLookup(presentNetAssets(prior.accounts).accounts, current);
-  const rows = flattenBalanceTree(buildBalanceTree(current)).map((node) => {
+  // A line that is $0 in both years says nothing, so it is left out (with the same "show zero-balance
+  // lines" switch the rest of the page uses). A subtotal stays if any line under it stays.
+  const keep = (node) => !hideZero || node.totalBalanceCents !== 0 || (priorOf(node) ?? 0) !== 0 || node.children.some(keep);
+  const allNodes = flattenBalanceTree(buildBalanceTree(current));
+  const shownNodes = allNodes.filter(keep);
+  const hiddenCount = allNodes.length - shownNodes.length;
+  const rows = shownNodes.map((node) => {
     const group = node.children.length > 0;
     const indent = `style="padding-left:${14 + node.depth * 16}px"`;
     const cls = group ? ' class="bs-group-row"' : '';
@@ -346,7 +352,7 @@ function renderYearOverYear(accounts, fiscalYear, prior) {
       + `<td class="num ${tone}">${signedChange(delta)}</td><td class="num ${tone}">${pct === null ? '—' : `${delta >= 0 ? '+' : ''}${pct.toFixed(1)}%`}</td></tr>`;
   }).join('');
   return `<div class="bs-panel" aria-label="Year over year">${heading}
-      <p class="bs-note">Every account on the ${fiscalYear} balance sheet, compared line by line with the same account’s ${priorYear} total.</p>
+      <p class="bs-note">Every account on the ${fiscalYear} balance sheet, compared line by line with the same account’s ${priorYear} total.${hiddenCount ? ` ${hiddenCount} line${hiddenCount === 1 ? '' : 's'} that are $0 in both years are hidden.` : ''}</p>
       ${renderPlainTable(['Account', [String(fiscalYear), true], [String(priorYear), true], ['Change', true], ['%', true]], rows, 'bs-tree')}
     </div>`;
 }
@@ -678,7 +684,7 @@ export function renderBalancePage(pageId, {
       ${renderZeroToggle(selection, fiscalYear, detail.hiddenCount)}
       ${detail.html}
       ${renderFoldedEquityNote(balanceSheet.accounts)}
-      ${renderYearOverYear(balanceSheet.accounts, fiscalYear, balancePriorYear)}`}
+      ${renderYearOverYear(balanceSheet.accounts, fiscalYear, balancePriorYear, { hideZero })}`}
     </section>`;
   }
 
