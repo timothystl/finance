@@ -29,7 +29,9 @@ const REPORTS = {
       { key: 'rare', label: 'Rare givers', goal: 'Start giving', num_people: 1, upside_modest_annual_cents: 6000, upside_standard_annual_cents: 18000, upside_generous_annual_cents: 30000,
         steps: [{ key: 'm40', label: '$40/mo', num_people: 1, now_min_cents: 500, now_max_cents: 500, avg_now_cents: 500, avg_weekly_increase_cents: 350, upside_modest_annual_cents: 6000, upside_standard_annual_cents: 18000, upside_generous_annual_cents: 30000,
           people: [{ id: 'p:3', name: 'Cara Example', total_cents: 30000, weekly_cents: 500, gifts: 2, months_given: 2, options: [{ label: 'Modest', new_annual_total_cents: 36000, annual_delta_cents: 6000 }, { label: 'Standard', new_annual_total_cents: 48000, annual_delta_cents: 18000 }, { label: 'Generous', new_annual_total_cents: 60000, annual_delta_cents: 30000 }] }] }] },
-      { key: 'irregular', label: 'Irregular givers', goal: 'Give consistently', num_people: 0, steps: [] },
+      { key: 'irregular', label: 'Irregular givers', goal: 'Automate their giving', num_people: 1, not_automated: 1, upside_modest_annual_cents: 360000, upside_standard_annual_cents: 360000, upside_generous_annual_cents: 360000,
+        steps: [{ key: 'auto', label: 'Automate at their average gift', num_people: 1, now_min_cents: 2300, now_max_cents: 2300, avg_now_cents: 2300, avg_weekly_increase_cents: 6900, upside_modest_annual_cents: 360000, upside_standard_annual_cents: 360000, upside_generous_annual_cents: 360000,
+          people: [{ id: 'h:9', name: 'Irregular Household', total_cents: 120000, weekly_cents: 2300, gifts: 3, months_given: 3, options: [{ label: 'Automate', new_annual_total_cents: 480000, annual_delta_cents: 360000 }] }] }] },
       { key: 'regular', label: 'Regular givers', goal: 'Increase', num_people: 1, upside_modest_annual_cents: 52000, upside_standard_annual_cents: 130000, upside_generous_annual_cents: 208000,
         steps: [{ key: 'w25', label: '+$25/wk band', num_people: 1, now_min_cents: 4000, now_max_cents: 4000, avg_now_cents: 4000, avg_weekly_increase_cents: 2500, upside_modest_annual_cents: 52000, upside_standard_annual_cents: 130000, upside_generous_annual_cents: 208000,
           people: [{ id: 'h:1', name: 'Sample Household', weekly_cents: 4000, total_cents: 160000, gifts: 40, months_given: 9, cadence_label: 'weekly', options: [{ label: 'Modest', target_cents: 5000, delta_cents: 1000, annual_delta_cents: 52000, impact_text: 'a month of Sunday school supplies' }, { label: 'Standard', target_cents: 6500, delta_cents: 2500, annual_delta_cents: 130000 }, { label: 'Generous', target_cents: 8000, delta_cents: 4000, annual_delta_cents: 208000 }] }] }] },
@@ -154,7 +156,9 @@ describe('Finance › Giving reports', () => {
     expect(plateaus).toContain('Next steps: three goals');
     expect(plateaus).toContain('Rare givers <small>Start giving</small>');
     expect(plateaus).toContain('Regular givers <small>Increase</small>');
-    expect(plateaus).not.toContain('Irregular givers <small>');
+    expect(plateaus).toContain('Irregular givers <small>Automate their giving</small>');
+    expect(plateaus).toContain('<b>$400/mo</b><small>$4,800 a year, +$3,600</small>');
+    expect(plateaus).toContain('<th>If automated</th>');
     expect(plateaus).toContain('<b>$40/mo</b>');
     // Funds sharing an account code are listed once, and any one of them selects the group.
     expect(plateaus).toContain('<option value="4" selected>40085 — all (General Fund, Lent)</option>');
