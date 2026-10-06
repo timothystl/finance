@@ -12,7 +12,8 @@ fixtures, or documentation.
   `finance_import_log`, `finance_import_history`, and the legacy `finance_settings` rows
   (including the full compensation planner model and private council drafts, and the yearly rent
   increase the Commercial Property Debt page's income estimate opens with,
-  `finance_property_rent_growth_pct`).
+  `finance_property_rent_growth_pct`, the board packet cover-letter template `board_packet_cover_template`,
+  and each person's final report list, `board_final_report_<username>`).
   The accounting tables (the list is `FINANCE_TABLES` in `src/finance-storage.js`) were copied from
   Connect's database at the September 23, 2026 cutover (13,411 rows across 14 tables, verified row by
   row against the frozen source). Finance is now the only writer.
