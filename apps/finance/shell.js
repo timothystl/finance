@@ -182,6 +182,7 @@ import { PROPERTY_CHART_STYLES } from './property-charts.js';
 import { renderCompensationPage } from './compensation-pages.js';
 import { renderPlanningPage } from './planning-pages.js';
 import { renderAttendancePage } from './attendance-pages.js';
+import { changeSelection, isSelectable, itemId, itemLabel, normalizeItem, readSelection, selectionOwner } from './packet-selection-service.js';
 import { fetchLiveAttendanceSummary } from './finance-attendance-client.js';
 import { readCoverTemplate, saveCoverTemplate } from './board-packet-cover-service.js';
 import { renderAccountsPage } from './accounts-pages.js';
@@ -1838,7 +1839,7 @@ function renderSectionBody(ctx) {
     });
   }
   if (section.id === 'packet') {
-    return renderPacketPage({ churchReportLive, balanceSheetLive: balanceSheet, churchTrendLive, giving, givingSource });
+    return renderPacketPage({ churchReportLive, balanceSheetLive: balanceSheet, churchTrendLive, giving, givingSource, selection: ctx.finalSelection || null, coverTemplate: ctx.coverTemplate || '', canSaveTemplate: Boolean(ctx.canSaveTemplate), templateSaved: ctx.searchParams?.get('saved') === '1' });
   }
   if (section.id === 'data') {
     // Imports, removals and classification edits are admin-only on Connect's side (except the
@@ -1896,6 +1897,19 @@ function renderPrintPage(ctx) {
     release: `${metadata.version} · ${metadata.releaseChannel}`,
     production: metadata.environment === 'production',
   });
+}
+
+// "Add to final report" for the report on screen, and a link to the list. Only offered for reports the
+// board packet can print, and only when the person has a list to keep it in.
+function renderFinalReportControl(ctx, section, page) {
+  const selection = ctx.finalSelection;
+  if (!Array.isArray(selection) || section.id === 'packet' || !isSelectable(section.id, page.id)) return '';
+  const query = new URLSearchParams([...new URLSearchParams(ctx.searchParams || '')].filter(([key]) => key !== 'section' && key !== 'page'));
+  const here = normalizeItem({ section: section.id, page: page.id, query: query.toString() });
+  const inList = here ? selection.some((x) => itemId(x) === itemId(here)) : false;
+  const back = `/?${new URLSearchParams(ctx.searchParams || '').toString()}`;
+  const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+  return ` <form method="POST" action="/api/v1/packet-selection" style="display:inline">${hidden('action', inList ? 'remove' : 'add')}${hidden('section', section.id)}${hidden('page', page.id)}${hidden('query', query.toString())}${here ? hidden('id', itemId(here)) : ''}${hidden('back', back)}<button type="submit" class="button-outline">${inList ? '✓ In final report · Remove' : '+ Add to final report'}</button></form> <a class="print-link" href="/?section=packet">Final report (${selection.length})</a>`;
 }
 
 function renderShell(ctx) {
@@ -1962,7 +1976,7 @@ function renderShell(ctx) {
       <div class="sidebar-foot">${accountingViewer(roleResult) ? '<a href="/accounting">Familiar accounting workspace</a><br><br>' : ''}${production ? 'Production · Timothy Lutheran<br>Access verified through Connect' : 'Isolated staging environment<br>Test data may be present'}</div>
     </aside>
     <main>
-      <div class="page-head"><div><div class="eyebrow">${escapeHtml(group)}</div><h1 class="page-title">${escapeHtml(pageTitle)}</h1></div>${section.id === 'health' ? renderHealthViewToggle(resolveHealthView(ctx.healthView), { councilPreview }) : ''}<a class="print-link" href="${escapeHtml(printHref(ctx.searchParams))}">Print</a>${section.id === 'planning' && page.id === 'builder' ? ` <a class="print-link" href="${escapeHtml(printHref(ctx.searchParams, { print_mode: 'thisyear' }))}">Print this year only</a>` : ''}${section.id === 'packet' ? ' <a class="print-link" href="/print/board-packet">Print board packet</a>' : ''}</div>
+      <div class="page-head"><div><div class="eyebrow">${escapeHtml(group)}</div><h1 class="page-title">${escapeHtml(pageTitle)}</h1></div>${section.id === 'health' ? renderHealthViewToggle(resolveHealthView(ctx.healthView), { councilPreview }) : ''}<a class="print-link" href="${escapeHtml(printHref(ctx.searchParams))}">Print</a>${section.id === 'planning' && page.id === 'builder' ? ` <a class="print-link" href="${escapeHtml(printHref(ctx.searchParams, { print_mode: 'thisyear' }))}">Print this year only</a>` : ''}${renderFinalReportControl(ctx, section, page)}${section.id === 'packet' ? ' <a class="print-link" href="/print/board-packet">Print board packet</a>' : ''}</div>
       ${roleNotice}
       ${councilNotice}
       ${sectionBody}
@@ -3954,6 +3968,22 @@ export default {
     // reports. Every piece is rendered by the shell route itself (print=1&fragment=1) with the
     // viewer's own headers, so each keeps its own permission check; a refused or failed piece is
     // named as left out rather than silently dropped.
+    if (route.id === 'packet-selection-v1') {
+      const roleResult = await fetchVerifiedRole(env, request.headers.get('Cf-Access-Jwt-Assertion') || '');
+      const toBack = (rawBack) => {
+        const back = String(rawBack || '');
+        return back.startsWith('/') && !back.startsWith('//') ? back : '/?section=packet';
+      };
+      let form;
+      try { form = await request.formData(); } catch { form = null; }
+      const fields = form ? Object.fromEntries([...form.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : ''])) : {};
+      if (!roleResult.ok) return response('<!doctype html><p>Role verification failed; the final report could not be changed.</p>', { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      const changed = await changeSelection(env.FINANCE_DB, selectionOwner(roleResult), fields,
+        (sectionId) => roleCanAccessSection(roleResult.role, resolveFinanceSection(sectionId), roleResult.permissions));
+      if (!changed.ok) return response(`<!doctype html><p>${escapeHtml(changed.error)}</p>`, { status: changed.status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return response(null, { status: 303, headers: { Location: toBack(fields.back) } });
+    }
+
     if (route.id === 'board-packet-cover-save-v1') {
       const roleResult = await fetchVerifiedRole(env, request.headers.get('Cf-Access-Jwt-Assertion') || '');
       const canEdit = roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
@@ -3962,7 +3992,8 @@ export default {
       try { form = await request.formData(); } catch { form = null; }
       const saved = await saveCoverTemplate(env.FINANCE_DB, form && form.get('note'));
       if (!saved.ok) return response(`<!doctype html><p>${escapeHtml(saved.error)}</p>`, { status: saved.status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-      return response(null, { status: 303, headers: { Location: '/print/board-packet?saved=1' } });
+      const backTo = String((form && form.get('back')) || '');
+      return response(null, { status: 303, headers: { Location: backTo.startsWith('/') && !backTo.startsWith('//') ? backTo : '/print/board-packet?saved=1' } });
     }
 
     if (route.id === 'print-board-packet') {
@@ -3978,18 +4009,24 @@ export default {
       const release = `${metadata.version} · ${metadata.releaseChannel}`;
       const production = metadata.environment === 'production';
       const include = url.searchParams.getAll('include').filter((key) => allowed.some((item) => item.key === key));
-      if (!include.length) {
+      const finalMode = url.searchParams.get('final') === '1';
+      const finalItems = finalMode ? await readSelection(env.FINANCE_DB, selectionOwner(roleResult)) : [];
+      if (finalMode ? !finalItems.length : !include.length) {
         const coverTemplate = (await readCoverTemplate(env.FINANCE_DB)) ?? DEFAULT_COVER_TEMPLATE;
         const canSaveTemplate = !!env.FINANCE_DB && roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
         return response(renderBoardPacketPicker({
           items: allowed, release, production, coverTemplate, canSaveTemplate, templateSaved: url.searchParams.get('saved') === '1',
-          message: url.searchParams.has('include') ? 'Choose at least one report you have access to.' : '',
+          message: finalMode ? 'Your final report is empty. Use “Add to final report” on a report screen first.' : (url.searchParams.has('include') ? 'Choose at least one report you have access to.' : ''),
         }), html);
       }
       const note = String(url.searchParams.get('note') || '').slice(0, COVER_NOTE_MAX).trim();
       const renderPiece = async (section, page, extra = {}) => {
         const pieceUrl = new URL('/', url.origin);
-        pieceUrl.search = new URLSearchParams({ section, page, print: '1', fragment: '1', ...extra }).toString();
+        const pieceQuery = new URLSearchParams({ section, page, print: '1', fragment: '1' });
+        for (const [key, value] of (extra instanceof URLSearchParams ? [...extra] : Object.entries(extra))) {
+          if (!['section', 'page', 'print', 'fragment'].includes(key)) pieceQuery.append(key, value);
+        }
+        pieceUrl.search = pieceQuery.toString();
         try {
           const res = await this.fetch(new Request(pieceUrl, { headers: request.headers }), env);
           return res.status === 200 ? await res.text() : null;
@@ -3999,7 +4036,12 @@ export default {
       const cover = await renderPiece('packet', 'builder');
       pieces.push(`${cover || ''}${note ? `<div class="print-cover-note">${escapeHtml(note)}</div>` : ''}`);
       const leftOut = [];
-      for (const item of BOARD_PACKET_ITEMS.filter((entry) => include.includes(entry.key))) {
+      for (const item of finalItems) {
+        const piece = await renderPiece(item.section, item.page, new URLSearchParams(item.query));
+        if (piece) pieces.push(`<div class="print-newpage">${piece}</div>`);
+        else leftOut.push(itemLabel(item));
+      }
+      for (const item of finalMode ? [] : BOARD_PACKET_ITEMS.filter((entry) => include.includes(entry.key))) {
         for (const page of item.pages) {
           const piece = await renderPiece(item.section, page, item.key === 'budget' && url.searchParams.get('budget_year') === 'plan' ? {} : item.pageParams?.[page]);
           if (piece) pieces.push(`<div class="print-newpage">${piece}</div>`);
@@ -4718,6 +4760,11 @@ export default {
         // costs its own timeout once, not once per section read in turn.
         [summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear] = await Promise.all([summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear]);
         const balancePriorYear = await balancePriorYearLoad;
+        const finalSelectionOwner = selectionOwner(roleResult);
+        const finalSelection = url.searchParams.get('print') !== '1' && env.FINANCE_DB && finalSelectionOwner && (isSelectable(section.id) || section.id === 'packet')
+          ? await readSelection(env.FINANCE_DB, finalSelectionOwner) : null;
+        const coverTemplate = finalSelection && section.id === 'packet' ? ((await readCoverTemplate(env.FINANCE_DB)) ?? DEFAULT_COVER_TEMPLATE) : '';
+        const canSaveTemplate = Boolean(finalSelection) && roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
         const attendance = section.id === 'attendance' ? await fetchLiveAttendanceSummary(env, defaultLiveChurchReportFiscalYear()) : null;
         const [balancePropertyValue, balanceMortgageHistory, propertyMortgageHistory, propertyRentGrowthSaved] = await Promise.all([balancePropertyValueLoad, balanceMortgageHistoryLoad, propertyMortgageHistoryLoad, propertyRentGrowth]);
         const printMode = url.searchParams.get('print') === '1';
@@ -4730,7 +4777,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,
