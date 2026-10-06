@@ -1,5 +1,5 @@
 import { fetchGivingBoard } from './connect-giving-analytics-client.js';
-import { makeBreezeClient } from './breeze-client.js';
+import { describeBreezeConfig } from './breeze-client.js';
 import { buildReconciliation, readCopyMonthly, readLastBreezeRuns } from './breeze-giving-service.js';
 import { escapeHtml as e, formatCents, formatSignedCents, renderKpiCards, renderSectionHeading, renderTable } from './render-helpers.js';
 
@@ -14,7 +14,7 @@ export async function loadBreezeGivingView(env, db, accessJwt, year, now = new D
   const monthly = data && data.year === year ? (data.categories?.all?.monthly?.current || data.monthly?.current) : null;
   const connectOk = Array.isArray(monthly) && monthly.length === 12;
   return {
-    configured: Boolean(makeBreezeClient(env)), year, runs, copyHasData: copy.hasData, connectOk,
+    configured: describeBreezeConfig(env).ok, configProblem: describeBreezeConfig(env).problem, year, runs, copyHasData: copy.hasData, connectOk,
     reconciliation: buildReconciliation({ copy, connectMonthlyCents: connectOk ? monthly : null, year, now }),
   };
 }
@@ -28,7 +28,7 @@ function statusLine(status, message) {
 export function renderBreezeGivingPage({ isAdmin, view, status = null, message = null }) {
   const heading = renderSectionHeading({ eyebrow: 'Data & Imports', heading: 'Breeze giving: Finance’s side-by-side copy', badge: 'Admin only' });
   if (!isAdmin) return `<section class="report" aria-label="Breeze giving copy">${heading}<p>Only an admin can see or run the Breeze giving copy.</p></section>`;
-  const { year, configured, runs, reconciliation: r, connectOk } = view;
+  const { year, configured, configProblem, runs, reconciliation: r, connectOk } = view;
   const now = new Date();
   const years = [];
   for (let y = now.getUTCFullYear(); y >= now.getUTCFullYear() - 5; y -= 1) years.push(y);
@@ -36,7 +36,7 @@ export function renderBreezeGivingPage({ isAdmin, view, status = null, message =
     <label for="bz-year">Year</label> <select id="bz-year" name="year">${years.map((y) => `<option value="${y}"${y === year ? ' selected' : ''}>${y}</option>`).join('')}</select> <button type="submit" class="button-outline">Show</button></form>`;
   const connectionCard = configured
     ? '<p>Breeze is connected to Finance. Syncing only reads from Breeze; nothing is changed in Breeze or in Connect.</p>'
-    : `<p class="status status-pending">Breeze is not connected to Finance yet. In Cloudflare, open the Workers & Pages entry <b>timothy-finance-app</b>, then Settings, then Variables and Secrets, and add two secrets: <b>BREEZE_SUBDOMAIN</b> (the part before <code>.breezechms.com</code>) and <b>BREEZE_API_KEY</b>. Finance keeps its own key and never copies Connect’s.</p>`;
+    : `<p class="status status-pending">Breeze is not connected to Finance yet. <b>What Finance sees:</b> ${e(configProblem || 'nothing set')} If you just added the secrets, give it a minute and reload; a secret added to a different Worker than <b>timothy-finance-app</b> will not reach Finance. In Cloudflare, open the Workers & Pages entry <b>timothy-finance-app</b>, then Settings, then Variables and Secrets, and add two secrets: <b>BREEZE_SUBDOMAIN</b> (the part before <code>.breezechms.com</code>) and <b>BREEZE_API_KEY</b>. Finance keeps its own key and never copies Connect’s.</p>`;
   const syncForm = configured
     ? `<form method="POST" action="/api/v1/breeze-giving-sync" class="inline-form"><input type="hidden" name="year" value="${year}"><button type="submit">Copy ${year} from Breeze</button> <small>Reads the whole year, one month at a time. It can take a minute.</small></form>`
     : '';

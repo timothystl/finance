@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import worker from '../apps/finance/shell.js';
-import { makeBreezeClient } from '../apps/finance/breeze-client.js';
+import { describeBreezeConfig, makeBreezeClient, normalizeBreezeSubdomain } from '../apps/finance/breeze-client.js';
 import { resetEnsuredSchemasForTests } from '../apps/finance/finance-owned-schema.js';
 import {
   buildReconciliation, monthRange, normalizeBreezeGift, readCopyMonthly, syncBreezeGivingYear,
@@ -52,6 +52,19 @@ describe('Breeze client', () => {
     const failing = makeBreezeClient(KEYS, { fetchImpl: fakeBreeze({}, { fail: 500 }).fetchImpl });
     await expect(failing.givingList({ start: 'a', end: 'b' })).rejects.toThrow(/Breeze answered 500/);
     await failing.givingList({ start: 'a', end: 'b' }).catch((error) => expect(error.message).not.toContain('secret-key-123'));
+  });
+});
+
+describe('Breeze connection settings', () => {
+  it('accepts the church name however it was pasted, and says plainly which secret is wrong without printing it', () => {
+    for (const raw of ['tlc', ' tlc ', 'tlc.breezechms.com', 'https://tlc.breezechms.com/', 'HTTPS://tlc.breezechms.com/api']) expect(normalizeBreezeSubdomain(raw).toLowerCase()).toBe('tlc');
+    expect(makeBreezeClient({ BREEZE_SUBDOMAIN: 'https://tlc.breezechms.com/', BREEZE_API_KEY: 'k' })).not.toBeNull();
+    expect(describeBreezeConfig({}).problem).toContain('Neither');
+    expect(describeBreezeConfig({ BREEZE_API_KEY: 'k' }).problem).toContain('BREEZE_SUBDOMAIN is missing');
+    expect(describeBreezeConfig({ BREEZE_SUBDOMAIN: 'tlc' }).problem).toContain('BREEZE_API_KEY is missing');
+    const odd = describeBreezeConfig({ BREEZE_SUBDOMAIN: 'my church!', BREEZE_API_KEY: 'super-secret' });
+    expect(odd.problem).toContain('does not look right');
+    expect(odd.problem).not.toContain('super-secret');
   });
 });
 
@@ -158,6 +171,8 @@ describe('Breeze giving page and sync route', () => {
     const { html } = await get('/?section=data&page=breeze-giving&year=2026', appEnv({ breeze: {} }));
     expect(html).toContain('Breeze is not connected to Finance yet');
     expect(html).toContain('BREEZE_API_KEY');
+    expect(html).toContain('What Finance sees');
+    expect(html).toContain('Neither BREEZE_SUBDOMAIN nor BREEZE_API_KEY reaches Finance');
     expect(html).not.toContain('Copy 2026 from Breeze');
     expect(html).toContain('Connect is still the official record');
     expect(html).toContain('All giving, from Connect');
