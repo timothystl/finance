@@ -276,7 +276,7 @@ describe('Finance alpha staging shell', () => {
     // Accounts & Data folds two sections under one entry, listing both.
     const data = await (await worker.fetch(new Request('https://finance.test/?section=data'), env)).text();
     expect(data).toContain('<a href="/?section=accounts&amp;page=chart">Chart of accounts</a>');
-    expect(data).toContain('<a href="/?section=data" aria-current="page">Data &amp; Imports</a>');
+    expect(data).toContain('<a href="/?section=data&amp;page=overview" aria-current="page">Data &amp; Imports</a>');
 
     // HR & Staff is its own admin-only area.
     const hr = await (await worker.fetch(new Request('https://finance.test/?section=hr&page=reviews'), env)).text();

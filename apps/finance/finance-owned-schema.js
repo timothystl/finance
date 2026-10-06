@@ -438,6 +438,52 @@ CREATE INDEX IF NOT EXISTS finance_qb_sync_backup_snapshots_backup
   ON finance_qb_sync_backup_snapshots (backup_id);
 `;
 
+export const BREEZE_GIVING_SCHEMA_SQL = `-- Breeze giving, a side-by-side copy (Andrew, 2026-10-05). Finance reads Breeze's giving list into
+-- these tables so its totals can be checked against Connect's, to the penny, before Finance takes
+-- over giving from Connect. Connect stays the authoritative record until that switch is made on
+-- purpose. The copy holds no names: only Breeze's own person number, the date, the amount, the
+-- method, and how the gift was split across funds. Money is in whole cents; days are YYYY-MM-DD.
+
+CREATE TABLE IF NOT EXISTS finance_breeze_gifts (
+  payment_id TEXT PRIMARY KEY,
+  person_ref TEXT NOT NULL DEFAULT '',
+  paid_on TEXT NOT NULL CHECK (paid_on GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'),
+  amount_cents INTEGER NOT NULL,
+  method TEXT NOT NULL DEFAULT '',
+  fee_cents INTEGER,
+  synced_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS finance_breeze_gifts_paid_on
+  ON finance_breeze_gifts (paid_on);
+
+CREATE TABLE IF NOT EXISTS finance_breeze_gift_funds (
+  payment_id TEXT NOT NULL,
+  fund_ref TEXT NOT NULL DEFAULT '',
+  fund_name TEXT NOT NULL DEFAULT '',
+  amount_cents INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS finance_breeze_gift_funds_payment
+  ON finance_breeze_gift_funds (payment_id);
+
+CREATE TABLE IF NOT EXISTS finance_breeze_sync_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT NOT NULL DEFAULT '',
+  range_start TEXT NOT NULL,
+  range_end TEXT NOT NULL,
+  fetched INTEGER NOT NULL DEFAULT 0,
+  added INTEGER NOT NULL DEFAULT 0,
+  updated INTEGER NOT NULL DEFAULT 0,
+  removed INTEGER NOT NULL DEFAULT 0,
+  total_cents INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  run_by TEXT NOT NULL DEFAULT ''
+);
+`;
+
 export const FINANCE_OWNED_SCHEMAS = Object.freeze({
   facilities: Object.freeze({ migration: '0010_finance_facilities.sql', sql: FACILITIES_SCHEMA_SQL }),
   hr: Object.freeze({ migration: '0011_finance_hr.sql', sql: HR_SCHEMA_SQL }),
@@ -450,6 +496,7 @@ export const FINANCE_OWNED_SCHEMAS = Object.freeze({
   qbSyncBackup: Object.freeze({ migration: '0017_finance_qb_sync_backup.sql', sql: QB_SYNC_BACKUP_SCHEMA_SQL }),
   // Named scenarios; copies the 0013 rows once, so it runs after 'planning' (ensurePlanningSchema).
   planningScenarios: Object.freeze({ migration: '0018_finance_planning_scenarios.sql', sql: PLANNING_SCENARIOS_SCHEMA_SQL }),
+  breezeGiving: Object.freeze({ migration: '0019_finance_breeze_giving.sql', sql: BREEZE_GIVING_SCHEMA_SQL }),
 });
 
 // Splits a migration file into single statements: comment lines dropped, split on ';'.
