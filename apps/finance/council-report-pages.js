@@ -249,7 +249,7 @@ function fundTable(data, g, ctx) {
   return `<div class="panel panel-spaced"><h2>Funds inside ${e(g.label)}</h2><div class="table-scroll"><table class="pm-table cr-table">${head('Fund')}<tbody>${rows}${totalRow(g)}</tbody></table></div></div>`;
 }
 
-function dashboard(data, g, ctx) {
+function dashboard(data, g, ctx, { compact = false } = {}) {
   const scope = g.key === 'all' ? 'all funds' : `${g.label} only`;
   const note = g.has_budget
     ? `Thousands of dollars, ${scope}. The budget bar is the council-approved plan spread across the year by last year’s pattern.`
@@ -264,7 +264,7 @@ function dashboard(data, g, ctx) {
       </div>
       ${navyPanel(data, g)}
     </div>
-    ${fundTable(data, g, ctx)}`;
+    ${compact ? '' : fundTable(data, g, ctx)}`;
 }
 
 // The narrative paragraphs, shared by the page and the email packet. Returns plain HTML strings
@@ -484,12 +484,15 @@ export function renderCouncilReportPage({ result, analysisResults = null, params
   }
   if (!result.ok) return `${banner}<p class="status status-error">The council giving report could not be read from Connect: ${e(result.message)} Nothing here is a real $0.</p>`;
   const data = result.data;
+  // The board packet asks for the compact print: the headline figures, month chart and mix, without
+  // the fund-by-fund tables or the other-categories page.
+  const compact = print && params.get('compact') === '1';
   const g = lensBlock(data, lens);
   const head = `<p class="lede">${e(data.through_label)} · ${e(g.label)} only · no individual donors named</p>`;
   const body = (g.given_ytd_cents || 0) === 0
     ? `<div class="panel panel-spaced"><div class="empty-note">${g.fund_count === 0 ? `No funds are mapped to ${e(g.label)} yet. Give each fund a category in Connect’s Giving settings.` : `No ${e(g.label)} giving recorded for ${e(data.period_label)} yet.`}</div></div>`
-    : mode === 'narrative' ? narrative(data, g, lens) : dashboard(data, g, ctx);
-  if (print) return `${head}${body}${otherCategoriesSummary(data, lens)}`;
+    : mode === 'narrative' ? narrative(data, g, lens) : dashboard(data, g, ctx, { compact });
+  if (print) return `${head}${body}${compact ? '' : otherCategoriesSummary(data, lens)}`;
   return `${banner}${controls(data, ctx, periods, thisYear)}${head}${elseStrip(data, ctx)}${body}
     <p class="muted-line">Print prints this view plus a one-page summary of the other categories.</p>
     ${canEmail && (g.given_ytd_cents || 0) > 0 ? emailForm(data, g, ctx) : ''}`;

@@ -192,3 +192,12 @@ describe('release number on screen', () => {
     expect(html).toContain('>v0.1.0-alpha.12<');
   });
 });
+
+describe('board packet content, October review', () => {
+  it('prints the Giving report compact (no fund tables), and leaves out the church income and expense detail', () => {
+    const giving = BOARD_PACKET_ITEMS.find((entry) => entry.key === 'giving');
+    expect(giving.pageParams.council).toEqual({ compact: '1' });
+    const church = BOARD_PACKET_ITEMS.find((entry) => entry.key === 'church');
+    expect(church.pages).toEqual(['overview', 'trend', 'budget-actual']);
+  });
+});

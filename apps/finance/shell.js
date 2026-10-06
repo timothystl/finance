@@ -1633,6 +1633,7 @@ function renderSectionBody(ctx) {
     return renderBalancePage(page.id, {
       balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, selection: balanceSelection,
       printMode: ctx.searchParams?.get('print') === '1',
+      printFragment: ctx.searchParams?.get('fragment') === '1',
       canManageBalanceImport, balanceXlsxImportStatus, balanceXlsxImportMessage,
       canImportBalanceMultiYear, balanceMultiYearXlsxImportStatus, balanceMultiYearXlsxImportMessage,
     });

@@ -172,7 +172,7 @@ function renderLayProperty(lay, valuation, history) {
     ? `<ul class="bs-meters"><li><span>Loan paid down${original ? ` <small>(from the original loan, ${escapeHtml(original.label)})</small>` : ''}</span><span class="bs-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, paidPct)).toFixed(1)}%"></i></span><span class="num">${formatCents(paidCents)} of ${formatCents(startCents)} · ${paidPct.toFixed(0)}%</span></li></ul>`
     : '';
   return `<div class="bs-panel" aria-label="Property">
-      ${panelHeading('Property (not spendable)', 'The commercial property. The books carry it at the loan amount, not its market value.')}
+      ${panelHeading('Commercial Property (not spendable)', 'The commercial property. The books carry it at the loan amount, not its market value.')}
       ${layTable(rows)}
       ${valueNote}
       ${meter}
@@ -197,7 +197,7 @@ export function renderMortgageHistory(bookCents, history, original = null) {
     const pct = startCents ? paid / startCents * 100 : 0;
     return `<tr><td>${h.fiscalYear}${partial ? ' <small>(so far)</small>' : ''}</td><td class="num">${formatCents(h.mortgageCents)}</td><td class="num">${paidThisYear === null ? '—' : formatCents(paidThisYear)}</td><td class="num">${formatCents(paid)} · ${pct.toFixed(0)}%</td></tr>`;
   }).join('');
-  return `<h4 class="bs-h">Mortgage progress by year</h4>
+  return `<h4 class="bs-h">Commercial Property mortgage: progress by year</h4>
     <p class="bs-note">Mortgage left at each year’s balance sheet. Years without an imported balance sheet are not shown; import the multi-year Statement of Financial Position to fill them in.</p>
     ${renderPlainTable(['Year', ['Mortgage left', true], ['Paid that year', true], [original ? 'Paid down from original loan' : 'Paid down since recorded', true]], rows)}`;
 }
@@ -615,7 +615,7 @@ export const BALANCE_STYLES = `
 // and `printMode` adds the filtered account detail to the Position print, matching Connect's
 // print sheet.
 export function renderBalancePage(pageId, {
-  balanceSheet, balanceTrends, balancePriorYear = null, selection = null, printMode = false,
+  balanceSheet, balanceTrends, balancePriorYear = null, selection = null, printMode = false, printFragment = false,
   balancePropertyValue = null, balanceMortgageHistory = null,
   canManageBalanceImport, balanceXlsxImportStatus, balanceXlsxImportMessage,
   canImportBalanceMultiYear, balanceMultiYearXlsxImportStatus, balanceMultiYearXlsxImportMessage,
@@ -695,7 +695,7 @@ export function renderBalancePage(pageId, {
       { label: 'Net assets', value: formatCents(report.totals.equityCents), hint: 'What we own minus what we owe' },
     ])}
     ${renderBalanceCheck(report.totals.equationDifferenceCents)}`}
-    ${isLive && printMode ? `${panelHeading('Full account detail', hideZero ? 'Zero-balance lines are hidden.' : '')}${renderBalanceDetailTree(balanceSheet.accounts, { hideZero }).html}` : ''}
+    ${isLive && printMode && !printFragment ? `${panelHeading('Full account detail', hideZero ? 'Zero-balance lines are hidden.' : '')}${renderBalanceDetailTree(balanceSheet.accounts, { hideZero }).html}` : ''}
     <p class="no-print">See <a href="${escapeHtml(balanceHref('account-detail', isLive ? { fiscal_year: fiscalYear } : {}))}">Account detail</a> and <a href="${escapeHtml(balanceHref('multi-year'))}">Multi-year position</a> for the full breakdown behind these totals.</p>`;
   return `<section class="report keep-in-print" aria-label="Balance Sheet position">
     ${renderSectionHeading({ eyebrow: 'Balance Sheet', heading: `Financial position as of ${escapeHtml(isLive ? asOfLabel : report.asOfDate)}`, badge })}

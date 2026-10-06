@@ -427,3 +427,13 @@ describe('buildPropertyValuationMetaFromForm', () => {
     expect(buildPropertyValuationMetaFromForm(form([['cap_rate_pct', '8'], ['vacancy_rate_pct', '120']])).error).toMatch(/100 or less/);
   });
 });
+
+describe('Commercial Property board summary shows whole years', () => {
+  it('counts the full year of rent and every payment in the first year, not just the months left to pay', async () => {
+    const html = await page(roleEnv('admin'), 'section=property&page=board-summary');
+    expect(html).not.toMatch(/2026 <small>\(\d+ months?\)<\/small>/);
+    // The sample loan pays $4,283 a month, so a whole year of payments is $51,396.
+    expect(html).toContain('$51,396');
+    expect(html).toMatch(/<td>2026<\/td><td>\$18,411<\/td>/);
+  });
+});

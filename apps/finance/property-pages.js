@@ -387,21 +387,25 @@ function renderDebtChart(projection, years, extra, history = []) {
 // It holds today's rent roll and operating costs (the Valuation page) flat, so the only thing that
 // moves from year to year is the mortgage payment; the first, part-year row counts only the months
 // still to pay. Capital projects and reserve changes are not in it.
-function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0, { after = 5, withForm = true, heading = 'Estimated income by year', growth = { saved: null, canSave: false } } = {}) {
+function renderDebtRevenue(years, income, loan, growthPct = 0, extraCents = 0, { after = 5, withForm = true, heading = 'Estimated income by year', growth = { saved: null, canSave: false }, fullYears = false } = {}) {
   if (!income || !years.length) return '';
   const AFTER = after;
   const last = Number(years.at(-1).year);
   const first = years[0];
   const rows = [...years, ...Array.from({ length: AFTER }, (_, i) => ({ year: String(last + 1 + i), paymentCents: 0, count: 12, paidOff: true }))].map((y) => {
-    const months = y === first && first.count < 12 ? first.count : 12;
+    // The board summary shows whole calendar years: the first year counts every month's rent and every
+    // payment in the year (those already made plus those still to come), not just the months left to pay.
+    const partialFirst = y === first && first.count < 12;
+    const months = partialFirst && !fullYears ? first.count : 12;
+    const paymentCents = partialFirst && fullYears ? y.paymentCents + (12 - first.count) * (loan.monthlyPaymentCents || 0) : y.paymentCents;
     // Rent rises by the chosen percent each year after the first row; operating costs stay put, so
     // every added rent dollar reaches the bottom line.
     const fullRent = income.rentCents * (1 + growthPct / 100) ** (Number(y.year) - Number(first.year));
     const rent = Math.round(fullRent * months / 12);
     const noi = Math.round((income.noiCents + (fullRent - income.rentCents)) * months / 12);
-    const left = noi - y.paymentCents;
+    const left = noi - paymentCents;
     const tag = y.paidOff ? ' <small>(loan paid off)</small>' : (months < 12 ? ` <small>(${months} month${months === 1 ? '' : 's'})</small>` : (y.year === String(last) && y.count < 12 ? ' <small>(final payments)</small>' : ''));
-    return `<tr><td>${y.year}${tag}</td><td>${formatCents(rent)}</td><td>${formatCents(noi)}</td><td>${formatCents(y.paymentCents)}</td><td><b>${formatSignedCents(left)}</b></td></tr>`;
+    return `<tr><td>${y.year}${tag}</td><td>${formatCents(rent)}</td><td>${formatCents(noi)}</td><td>${formatCents(paymentCents)}</td><td><b>${formatSignedCents(left)}</b></td></tr>`;
   }).join('');
   const remembered = growth.saved != null ? `<p><small>${growth.saved === growthPct ? `Remembered for everyone: ${growth.saved}% a year.` : `The remembered rate is ${growth.saved}% a year; you are looking at ${growthPct}% without saving it.`}</small></p>` : '';
   const form = `<form method="GET" action="/" class="inline-form"><input type="hidden" name="section" value="property"><input type="hidden" name="page" value="debt">${extraCents ? `<input type="hidden" name="extra" value="${(extraCents / 100).toFixed(0)}">` : ''}
@@ -500,7 +504,7 @@ function renderPropertyBoardSummary({ propertyReportLive, propertyReservesLive, 
   let projected = '<p class="status status-pending">Projected income needs the loan terms and the rent roll; one of them could not be read.</p>';
   if (projection && income) {
     const terms = { balanceCents: projection.currentBalanceCents, annualRate: debt.loan.interestRatePct, paymentCents: debt.loan.monthlyPaymentCents, startMonth: nextPeriod(String(projection.currentBalanceAsOf).slice(0, 7)) };
-    projected = renderDebtRevenue(byYear(amortize(terms).months), income, debt.loan, rentGrowthPct, 0, { after: 1, withForm: false, heading: 'Projected income by year' });
+    projected = renderDebtRevenue(byYear(amortize(terms).months), income, debt.loan, rentGrowthPct, 0, { after: 1, withForm: false, heading: 'Projected income by year', fullYears: true });
   }
   return `<section class="report" aria-label="Commercial Property board summary">
     ${renderSectionHeading({ eyebrow: 'Commercial Property', heading: 'Commercial Property, board summary', badge: annual ? 'Live from Connect' : 'Partial data' })}
