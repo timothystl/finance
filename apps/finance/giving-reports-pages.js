@@ -361,7 +361,7 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
   const [res, impact, funds] = results;
   const form = controls('plateaus', yearSelect(p) + fundSelect(p, funds?.ok ? funds.data.funds : []) + scopeSelect(p)
     + `<label>Occasional: gifts a year, at most <input type="number" name="low_frequency_max" min="1" max="51" value="${p.lowFreq}" class="gr-small"></label>${kind ? hidden('kind', kind) : ''}`, keep);
-  const ladderHead = `<h2 class="gr-part-title">Next steps: three goals</h2><p class="muted">Rare givers start giving, irregular givers give consistently, and regular givers increase. Retirement distributions and other large annual gifts are handled on their own. Funds that share an account code, such as every 40085 fund, count as one.</p>`;
+  const ladderHead = `<h2 class="gr-part-title">Next steps: three goals</h2><p class="muted">Rare givers start giving, irregular givers give consistently, and regular givers increase. Retirement distributions and other large annual gifts are handled on their own. Only member households are included. Funds that share an account code, such as every 40085 fund, count as one.</p>`;
   if (!res.ok) return `${banner}${queue}<section class="gr-part">${ladderHead}${form}${unavailable('The plateau report', res.data?.error || res.message)}${impactPanel(impact, keep)}</section>`;
   const d = res.data;
   const who = scopeWord(d.scope, 2);
