@@ -621,6 +621,126 @@ export function renderWhatIfPage({ result, params, keep = {} }) {
     ${whatIfMethod(a, base)}`;
 }
 
+// ── Campaign capacity ─────────────────────────────────────────────────────────────────────────
+// What a capital campaign could raise beyond normal giving over the next three to five years,
+// worked from the household bands alone (totals only; nobody is named). Households are grouped
+// into three tiers by band (the lowest third of the bands, the middle, the top). Each tier has a
+// share of households that take part and an extra gift each year, as a share of what those
+// households give now. Cautious and Stretch scale the Likely assumptions down and up. The
+// starting numbers are rules of thumb for a church campaign, not measurements; the reader can
+// change every one. Nothing is saved.
+
+export const CAMPAIGN_FIELDS = Object.freeze(['part_1', 'part_2', 'part_3', 'extra_1', 'extra_2', 'extra_3', 'fulfil']);
+export const CAMPAIGN_YEARS = Object.freeze([3, 4, 5]);
+const CAMPAIGN_LIKELY = Object.freeze({ part: [40, 55, 70], extra: [35, 40, 50], fulfil: 90 });
+const CAMPAIGN_SCENARIOS = Object.freeze([
+  { key: 'cautious', label: 'Cautious', scale: 0.65, note: 'Fewer households take part and give less extra' },
+  { key: 'likely', label: 'Likely', scale: 1, note: 'The assumptions as set below' },
+  { key: 'stretch', label: 'Stretch', scale: 1.3, note: 'A strong vision, strong leadership and a well-run campaign' },
+]);
+const CAMPAIGN_TIERS = Object.freeze(['Smaller-giving households', 'Middle-giving households', 'Larger-giving households']);
+
+function campaignTier(index, count) {
+  return Math.min(2, Math.floor(index * 3 / Math.max(1, count)));
+}
+
+export function projectCampaign(h, params) {
+  const bands = (h.bands || []).filter((b) => b && b.households >= 0);
+  const inputs = { fulfil: readAssumption(params, 'fulfil', CAMPAIGN_LIKELY.fulfil, { min: 0, max: 100 }) };
+  for (let t = 0; t < 3; t += 1) {
+    inputs[`part_${t + 1}`] = readAssumption(params, `part_${t + 1}`, CAMPAIGN_LIKELY.part[t], { min: 0, max: 100 });
+    inputs[`extra_${t + 1}`] = readAssumption(params, `extra_${t + 1}`, CAMPAIGN_LIKELY.extra[t], { min: 0, max: 300 });
+  }
+  const t12Cents = h.t12_cents || 0;
+  const scenarios = CAMPAIGN_SCENARIOS.map((sc) => {
+    const rows = bands.map((b, i) => {
+      const tier = campaignTier(i, bands.length);
+      const share = Math.min(95, inputs[`part_${tier + 1}`] * sc.scale) / 100;
+      const extra = inputs[`extra_${tier + 1}`] * sc.scale / 100;
+      return { label: b.label, tier, households: b.households, participants: b.households * share, perYearCents: Math.round(b.cents * share * extra * inputs.fulfil / 100) };
+    });
+    const perYearCents = rows.reduce((s, r) => s + r.perYearCents, 0);
+    const byYears = Object.fromEntries(CAMPAIGN_YEARS.map((y) => [y, perYearCents * y]));
+    return { ...sc, rows, perYearCents, byYears, participants: rows.reduce((s, r) => s + r.participants, 0), yearShare: t12Cents ? perYearCents / t12Cents : 0 };
+  });
+  return { inputs, t12Cents, scenarios, bandCount: bands.length };
+}
+
+function campaignMethod(a, base) {
+  const h = a.households;
+  const [, m, d] = a.as_of.split('-').map(Number);
+  const item = (title, text, value) => `<li><div><b>${e(title)}</b><p>${text}</p></div>${value ? `<span class="ga-method-value">${value}</span>` : ''}</li>`;
+  const tierBands = (t) => base.scenarios[1].rows.filter((r) => r.tier === t).map((r) => r.label);
+  const fundText = fundKey(a) === 'all' ? 'Gifts to every fund count.' : e(scopeShort(a).trim());
+  return `<div class="panel panel-spaced ga-method"><h2>How this is figured</h2>
+    <p class="muted-line">This is a planning range, not a promise. Nothing on this page names a household, is saved, or changes the budget.</p>
+    <ul>
+      ${item('Normal giving', `The 12 months ending ${e(MONTH_NAMES[m - 1])} ${d}, ${a.year}, for every household that gave at least once, grouped into Connect’s giving bands. ${fundText} Everything below is <i>extra</i>, on top of that.`, `${h.t12_households} households · ${money(h.t12_cents)}`)}
+      ${CAMPAIGN_TIERS.map((name, t) => item(name, tierBands(t).length ? `The bands ${e(tierBands(t).join(', '))}.` : 'No bands fall in this tier.', '')).join('')}
+      ${item('Who takes part', 'In each tier, the share of households that make a campaign commitment on top of what they give now. Strong campaigns reach a majority of the giving households; many reach far fewer.', '')}
+      ${item('How much extra', 'For each household that takes part, an extra amount each year as a share of what its band gives now. Larger gifts are usually larger in proportion too, which is why the top tier is set highest.', '')}
+      ${item('Commitments kept', 'The share of what is committed that is actually received. Moves, job changes and hard years mean some commitments are not completed.', `${base.inputs.fulfil}%`)}
+      ${item('Cautious and Stretch', 'Cautious takes 65% of the Likely participation and extra giving; Stretch takes 130% (no tier is taken above 95% participation).', '')}
+      ${item('Three to five years', 'The yearly extra is multiplied by 3, 4 or 5 years. Most campaign commitments run three years, so the 4 and 5 year columns assume a second push or a longer commitment at the same level.', '')}
+      ${item('What is not counted', 'One-time gifts of stock, property or an estate, grants, and gifts from outside the congregation. Organizations and anonymous plate cash are not part of any household. These can add to a campaign, and are not here.', '')}
+      ${item('Where to be careful', 'Households are grouped, so this reflects how giving is spread across the congregation, not the plans of any family. Treat it as a way to ask “is a goal like this in range?”, not as a goal.', '')}
+    </ul></div>`;
+}
+
+export function renderCampaignPage({ result, params, keep = {} }) {
+  if (!result.ok) return unavailable('Campaign capacity', result.message);
+  const a = result.data;
+  const h = a.households;
+  const picker = fundPicker(a, { page: 'campaign', hidden: keep });
+  if (!h.t12_households || h.t12_households < 10 || !h.bands?.length) {
+    return `${picker}<p class="lede">What a capital campaign could raise beyond normal giving. Totals only.</p>
+      <div class="panel"><h2>Not enough households yet</h2><p class="muted-line">This needs at least ten giving households in the last 12 months.</p></div>`;
+  }
+  const p = projectCampaign(h, params);
+  const [cautious, likely, stretch] = p.scenarios;
+  const fund = fundKey(a);
+  const scope = fund === 'all' ? '' : ` (${scopePhrase(a)})`;
+  const multiple = (cents) => (p.t12Cents ? `${(cents / p.t12Cents).toFixed(2)}× a year of normal giving` : '');
+  const field = (key, label, note, suffix = '%', max = 100) => `<label class="ga-assume"><span><b>${label}</b><small>${note}</small></span>
+      <span class="ga-input"><input type="number" name="${key}" value="${p.inputs[key]}" min="0" max="${max}" step="1" inputmode="numeric"><i>${suffix}</i></span></label>`;
+  const tierLabels = (t) => likely.rows.filter((r) => r.tier === t).map((r) => r.label).join(', ') || '—';
+  const tierFields = CAMPAIGN_TIERS.map((name, t) => `<div class="ga-tier"><h3>${e(name)}</h3><p class="muted-line">${e(tierLabels(t))}</p>
+        ${field(`part_${t + 1}`, 'Households taking part', 'Share that make a campaign commitment')}
+        ${field(`extra_${t + 1}`, 'Extra each year', 'As a share of what they give now', '%', 300)}</div>`).join('');
+  const scenarioRows = p.scenarios.map((s) => `<tr${s.key === 'likely' ? ' class="total-row"' : ''}><td><b>${s.label}</b><div class="ga-note">${e(s.note)}</div></td><td>${Math.round(s.participants)}</td><td>${money(s.perYearCents)}</td>${CAMPAIGN_YEARS.map((y) => `<td>${money(s.byYears[y])}</td>`).join('')}</tr>`).join('');
+  const bandRows = likely.rows.map((r) => `<tr><td>${e(r.label)}</td><td>${r.households}</td><td>${Math.round(r.participants)}</td><td>${r.participants >= 0.5 ? money(r.perYearCents / r.participants) : '—'}</td><td>${money(r.perYearCents)}</td><td>${money(r.perYearCents * 3)}</td></tr>`).join('');
+  return `${picker}
+    <p class="lede">What a capital campaign could realistically raise <b>beyond</b> normal giving over the next three to five years${e(scope)}. It is worked from the giving bands alone, so it names no one and says nothing about any family. Change the assumptions to test a goal; nothing here is saved.</p>
+    <div class="ga-two">
+      <form method="GET" action="/" class="panel ga-assumptions">
+        <input type="hidden" name="section" value="giving-analytics"><input type="hidden" name="page" value="campaign">${fund === 'general' ? '' : `<input type="hidden" name="fund" value="${e(fund)}">`}${keep.council ? '<input type="hidden" name="council" value="1">' : ''}
+        <h2>Likely assumptions</h2>
+        ${tierFields}
+        ${field('fulfil', 'Commitments kept', 'Share of what is committed that is received')}
+        <div class="form-actions"><button type="submit">Recalculate</button><a class="ga-link-button is-outline" href="${href('campaign', { ...keep, fund })}">Reset</a></div>
+      </form>
+      <div class="ga-projection">
+        <small>Likely extra giving over 3 years</small>
+        <strong>${money(likely.byYears[3])}</strong>
+        <p>${e(multiple(likely.byYears[3]))}</p>
+        <dl>
+          <div><dt>Cautious to Stretch, 3 years</dt><dd>${compact(cautious.byYears[3])} – ${compact(stretch.byYears[3])}</dd></div>
+          <div><dt>Likely, 4 years</dt><dd>${money(likely.byYears[4])}</dd></div>
+          <div><dt>Likely, 5 years</dt><dd>${money(likely.byYears[5])}</dd></div>
+          <div><dt>Likely, each year</dt><dd>${money(likely.perYearCents)} (${pct(likely.yearShare)} more)</dd></div>
+          <div><dt>Households taking part</dt><dd>${Math.round(likely.participants)} of ${h.t12_households}</dd></div>
+        </dl>
+      </div>
+    </div>
+    <div class="panel panel-spaced list-panel"><h2>Three views</h2><div class="table-scroll"><table class="pm-table ga-num"><thead><tr><th>Scenario</th><th>Households taking part</th><th>Extra each year</th><th>3 years</th><th>4 years</th><th>5 years</th></tr></thead>
+      <tbody>${scenarioRows}</tbody></table></div>
+      <p class="muted-line">Extra giving only, on top of the ${money(p.t12Cents)} the ${h.t12_households} giving households gave in the last 12 months, after commitments kept.</p></div>
+    <div class="panel panel-spaced list-panel"><h2>Where the Likely figure comes from</h2><div class="table-scroll"><table class="pm-table ga-num"><thead><tr><th>Band</th><th>Households</th><th>Taking part</th><th>Extra each, per year</th><th>Extra each year</th><th>3 years</th></tr></thead>
+      <tbody>${bandRows}<tr class="total-row"><td>All households</td><td>${h.t12_households}</td><td>${Math.round(likely.participants)}</td><td>—</td><td>${money(likely.perYearCents)}</td><td>${money(likely.byYears[3])}</td></tr></tbody></table></div>
+      <p class="muted-line">Averages for a band, never a household. A campaign is carried by many gifts of different sizes; the larger bands matter most, as in the <a href="/?section=charts&amp;page=concentration">giving concentration</a> chart.</p></div>
+    ${campaignMethod(a, p)}`;
+}
+
 // ── Giving statements ─────────────────────────────────────────────────────────────────────────
 
 function namedRefusal(what) {
@@ -733,6 +853,9 @@ export const GIVING_ANALYTICS_STYLES = `
     .ga-projection dl div { display:flex; justify-content:space-between; padding:8px 0; }
     .ga-projection dt { color:#DCE3EE; }
     .ga-projection dd { margin:0; font-weight:600; }
+    .ga-tier { border-top:1px solid #EEF0F4; padding-top:10px; margin-top:10px; }
+    .ga-tier h3 { margin:0 0 2px; font-size:15px; }
+    .ga-note { color:#6B7280; font-size:12.5px; font-weight:400; }
     .ga-method ul { list-style:none; margin:10px 0 0; padding:0; }
     .ga-method li { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:10px 0; border-bottom:1px solid #EEF0F4; }
     .ga-method li p { margin:2px 0 0; color:#4B5563; font-size:13.5px; }
