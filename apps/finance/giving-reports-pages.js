@@ -331,6 +331,25 @@ function moveForm(x, g, edit) {
     .concat(Object.entries(GROUP_LABELS).map(([k, label]) => `<option value="${k}"${manual && k === g.key ? ' selected' : ''}>${e(label)}</option>`));
   return `<form method="POST" action="/api/v1/giving-nudge-group" class="inline-form">${hidden('recipient_key', x.recipient_key)}${edit.fields}<select name="group" aria-label="Group for ${e(x.name)}">${opts.join('')}</select> <button type="submit">Move</button></form>`;
 }
+const shortDate = (iso) => {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? new Date(`${iso}T00:00:00Z`) : null;
+  return d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
+};
+// Members who are not giving this year, and members who are not in a household. Every member counts.
+function nonGiverBlocks(ng, d, who, who1, fundScoped) {
+  if (!ng) return '';
+  const label = d.scope === 'person' ? 'Name' : 'Household';
+  const note = (x) => (x.inactive ? '<small>record marked inactive</small>' : '');
+  const lapsed = ng.lapsed?.num_people ? `<details class="gr-tier"><summary>Gave in ${e(ng.last_year)}, nothing in ${e(ng.year)}: ${plural(ng.lapsed.num_people, who1, who)}</summary><div class="table-wrap"><table class="gr-num"><thead><tr><th>${label}</th><th>Gave in ${e(ng.last_year)}</th><th>Last gift</th></tr></thead>
+    <tbody>${ng.lapsed.people.map((x) => `<tr><td>${e(x.name)}${note(x)}</td><td>${money(x.last_year_cents)}</td><td>${e(shortDate(x.last_gift))}</td></tr>`).join('')}</tbody></table></div>${ng.lapsed.people.length < ng.lapsed.num_people ? `<p class="gr-caption">Showing the first ${ng.lapsed.people.length} of ${ng.lapsed.num_people}.</p>` : ''}</details>` : '';
+  const dormant = ng.dormant?.num_people ? `<details class="gr-tier"><summary>No gift in ${e(ng.last_year)} or ${e(ng.year)}: ${plural(ng.dormant.num_people, who1, who)}</summary><div class="table-wrap"><table class="gr-num"><thead><tr><th>${label}</th><th>Last gift on record</th></tr></thead>
+    <tbody>${ng.dormant.people.map((x) => `<tr><td>${e(x.name)}${note(x)}</td><td>${x.last_gift ? e(shortDate(x.last_gift)) : 'None'}</td></tr>`).join('')}</tbody></table></div>${ng.dormant.people.length < ng.dormant.num_people ? `<p class="gr-caption">Showing the first ${ng.dormant.people.length} of ${ng.dormant.num_people}.</p>` : ''}</details>` : '';
+  const block = `<section class="gr-card"><h2>Not giving <small>Start giving</small></h2><p class="muted">Members with no gifts in ${e(ng.year)}${fundScoped ? ' to this fund' : ''}, in two groups. Every member counts, whether or not their record is active; ones marked inactive say so, in case they have moved away. No dollar amount is suggested.</p>
+    <div class="grid">${card(`Gave in ${ng.last_year}`, String(ng.lapsed?.num_people || 0), 'nothing yet this year')}${card('No gift in two years', String(ng.dormant?.num_people || 0), `${ng.last_year} or ${ng.year}`)}</div>${lapsed}${dormant}</section>`;
+  const nh = ng.members_without_household;
+  const flag = nh?.count ? `<section class="gr-card"><h2>Members not in a household <small>needs fixing</small></h2><p class="status status-error">${plural(nh.count, 'member')} ${nh.count === 1 ? 'is' : 'are'} not in a household. Every member should be in one, so these people are counted alone above. Add them to a household in Connect.</p><ul class="row-list">${nh.people.map((x) => `<li>${e(x.name)}${x.inactive ? ' <small>record marked inactive</small>' : ''}</li>`).join('')}</ul>${nh.people.length < nh.count ? `<p class="gr-caption">Showing the first ${nh.people.length} of ${nh.count}.</p>` : ''}</section>` : '';
+  return block + flag;
+}
 function groupBlocks(d, who, who1, edit) {
   const groups = (d.groups || []).filter((g) => g.num_people > 0);
   const steps = groups.map((g) => {
@@ -402,7 +421,7 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
   const whoIs = `<section class="gr-card"><h2>Who is in each step</h2>${grouped && edit ? '<p class="muted">If someone is in the wrong group, change it in the Group column and press Move. A household you move stays there until you set it back to Automatic.</p>' : ''}${grouped ? grouped.people : tierPeople}</section>`;
   return `${banner}${queue}<section class="gr-part">${ladderHead}${form}<div class="grid">${card(`Giving ${who}`, String(s.total_givers), `Weekly amounts are ${weeks}`)}${card('If each took the next step', `+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}`, 'a year, modest to generous')}${thirdCard}</div>${excl}
     ${targets}
-    ${whoIs}${occBlock}${histogram}${impactPanel(impact, keep)}</section>`;
+    ${whoIs}${nonGiverBlocks(d.non_givers, d, who, who1, !!p.fund)}${occBlock}${histogram}${impactPanel(impact, keep)}</section>`;
 }
 
 // ── Giving bands ─────────────────────────────────────────────────────────────────────────────
