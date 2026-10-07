@@ -29,7 +29,7 @@ import { renderGymIncomePage } from './gym-income-pages.js';
 import { fetchGymIncome, describeGymIncomeFailure } from './gym-income-client.js';
 import { describeGivingBatchFailure, fetchGivingDeposit, fetchGivingBatchLedger, fetchGivingBatchWorkspace, fetchGivingTransactions, fetchOnlineGiving, postGivingBatchWrite, fetchGivingOnlineSettings, postGivingOnlineSettingsWrite } from './connect-giving-batch-client.js';
 import { GIFT_TRANSACTIONS_STYLES, buildTransactionsCsv, normalizeTransactionParams, renderOnlineGivingPage, renderTransactionsPage, transactionsCsvFilename, transactionsCsvParams } from './gift-transactions-pages.js';
-import { fetchGivingAnalytics, fetchGivingAnalyticsPeople, fetchGivingBoard, fetchGivingReport, postGivingBoardEmail, postGivingFollowupWrite, postGivingNudgeGroupWrite, postGivingImpactWrite, postGivingFundPassThrough, fetchGivingFundCleanup, postGivingFundCleanup } from './connect-giving-analytics-client.js';
+import { fetchGivingAnalytics, fetchGivingAnalyticsPeople, fetchGivingBoard, fetchGivingReport, postGivingBoardEmail, postGivingFollowupWrite, postGivingNudgeGroupWrite, postGivingNudgeBandsWrite, postGivingImpactWrite, postGivingFundPassThrough, fetchGivingFundCleanup, postGivingFundCleanup } from './connect-giving-analytics-client.js';
 import { FUND_CLEANUP_STYLES, renderFundCleanup } from './fund-cleanup-pages.js';
 import { GIVING_REPORTS_STYLES, givingReportParams, givingReportRequests, impactStatementsFromForm, renderGivingReportPage } from './giving-reports-pages.js';
 import { DONOR_LETTERS_STYLES, kindOfPage, renderDonorLettersPage } from './donor-letters-pages.js';
@@ -1125,6 +1125,40 @@ async function handleGivingNudgeGroupWrite(request, env, url) {
   const result = await postGivingNudgeGroupWrite(env, request.headers.get('Cf-Access-Jwt-Assertion') || '', { recipient_key: key, group });
   if (!result.ok) return back({ ...keep, status: 'error', message: describeGivingBatchFailure(result).slice(0, 200) });
   return back({ ...keep, status: 'ok', msg: group ? 'Moved.' : 'Set back to automatic.' });
+}
+
+// Nudges and next steps: the weekly increase asked of regular givers, band by band. Each row starts
+// at a weekly amount and runs to the next row. Connect saves it (giving-nudge-bands-write-v1), keeps
+// the set the report and the letters share, and re-checks Giving edit access.
+async function handleGivingNudgeBandsWrite(request, env, url) {
+  const back = (extra) => response(null, { status: 303, headers: { Location: `/?${new URLSearchParams({ section: 'giving-reports', page: 'plateaus', ...extra }).toString()}` } });
+  if (!isSameOriginPost(request, url)) return back({ status: 'error', message: 'That form did not come from Timothy Finance.' });
+  let form;
+  try { form = await request.formData(); } catch { return back({ status: 'error', message: 'The form could not be read.' }); }
+  const field = (name) => String(form.get(name) || '').trim().slice(0, 40);
+  const keep = {};
+  if (/^\d{4}$/.test(field('year'))) keep.year = field('year');
+  if (['household', 'person'].includes(field('scope'))) keep.scope = field('scope');
+  if (/^\d{1,9}$/.test(field('fund_id'))) keep.fund_id = field('fund_id');
+  if (/^\d{1,2}$/.test(field('low_frequency_max'))) keep.low_frequency_max = field('low_frequency_max');
+  if (/^\d{1,3}$/.test(field('regular_weekly'))) keep.regular_weekly = field('regular_weekly');
+  if (/^\d{1,3}$/.test(field('regular_share'))) keep.regular_share = field('regular_share');
+  let body;
+  if (field('op') === 'reset') body = { reset: true };
+  else {
+    const bands = [];
+    for (let i = 0; i < 12; i += 1) {
+      const from = field(`from_${i}`), step = field(`step_${i}`);
+      if (from === '' && step === '') continue;
+      if (!/^\d{1,6}$/.test(from) || !/^\d{1,4}$/.test(step) || Number(step) < 1) return back({ ...keep, status: 'error', message: 'Each row needs a weekly amount and an increase of at least $1, in whole dollars.' });
+      bands.push({ from: Number(from), step: Number(step) });
+    }
+    if (!bands.length) return back({ ...keep, status: 'error', message: 'Add at least one row.' });
+    body = { bands };
+  }
+  const result = await postGivingNudgeBandsWrite(env, request.headers.get('Cf-Access-Jwt-Assertion') || '', body);
+  if (!result.ok) return back({ ...keep, status: 'error', message: describeGivingBatchFailure(result).slice(0, 200) });
+  return back({ ...keep, status: 'ok', msg: body.reset ? 'Weekly increases put back to the defaults.' : 'Weekly increases saved.' });
 }
 
 async function handleGivingFollowupWrite(request, env, url) {
@@ -2251,6 +2285,7 @@ export default {
       return handleGivingFollowupWrite(request, env, url);
     }
     if (route.id === 'giving-nudge-group-write-v1') return handleGivingNudgeGroupWrite(request, env, url);
+    if (route.id === 'giving-nudge-bands-write-v1') return handleGivingNudgeBandsWrite(request, env, url);
     if (route.id === 'giving-fund-passthrough-write-v1') return handleGivingFundPassThrough(request, env, url);
     if (route.id === 'giving-fund-cleanup-write-v1') return handleGivingFundCleanup(request, env, url);
 
