@@ -355,7 +355,7 @@ describe('Giving analytics pages (Finance v3)', () => {
     const html = await (await reports(env, '&page=plateaus&kind=stopped')).text();
     expect(html).toContain('Follow-up queue');
     expect(html.indexOf('Follow-up queue')).toBeLessThan(html.indexOf('Next steps: three goals'));
-    expect(html).toContain('href="/?section=giving-reports&amp;page=plateaus&amp;year=2026&amp;scope=household&amp;low_frequency_max=3&amp;kind=first_time"');
+    expect(html).toContain('href="/?section=giving-reports&amp;page=plateaus&amp;year=2026&amp;scope=household&amp;low_frequency_max=3&amp;regular_weekly=25&amp;regular_share=100&amp;kind=first_time"');
     expect(html).toContain('Anna Schreiber');
     expect(html).toContain('Done this month');
     expect(html).toContain('<option value="pastor">Pastor Dinger</option>');

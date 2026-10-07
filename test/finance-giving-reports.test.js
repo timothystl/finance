@@ -151,6 +151,16 @@ describe('Finance › Giving reports', () => {
     }
   });
 
+  it('recalculates the planning estimate from the weekly increase and the share who say yes', async () => {
+    const html = await page(env(), 'plateaus', '&year=2026&regular_weekly=40&regular_share=50');
+    // One regular household: 50% × $40 a week × 52 = $1,040 a year, about $173 a month.
+    expect(html).toContain('<strong>+$1,040</strong>');
+    expect(html).toContain('50% of 1 household give $40 more a week (about $173 a month)');
+    expect(html).toContain('value="40"');
+    // A silly value is held to the allowed range.
+    expect(await page(env(), 'plateaus', '&year=2026&regular_weekly=99999&regular_share=-5')).toContain('<strong>+$0</strong>');
+  });
+
   it('relays a move to another group to Connect and returns to the same report', async () => {
     const e = env();
     const res = await call(e, '/api/v1/giving-nudge-group', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ recipient_key: 'h1', group: 'regular', year: '2026', scope: 'household', fund_id: '4', low_frequency_max: '2' }) });
@@ -180,6 +190,10 @@ describe('Finance › Giving reports', () => {
     expect(plateaus).toContain('<b>$400/mo</b><small>$4,800 a year, +$3,600</small>');
     expect(plateaus).toContain('<th>If automated</th>');
     expect(plateaus).toContain('Not giving <small>Start giving</small>');
+    // Planning estimate: the one regular household at the default $25 a week, everyone saying yes.
+    expect(plateaus).toContain('<strong>+$1,300</strong>');
+    expect(plateaus).toContain('name="regular_weekly" min="0" max="500" step="1" value="25"');
+    expect(plateaus).toContain('name="regular_share" min="0" max="100" step="1" value="100"');
     expect(plateaus).toContain('Gave in 2025, nothing in 2026: 1 household');
     expect(plateaus).toContain('<td>Lapsed Household</td><td>$700</td><td>Mar 2, 2025</td>');
     expect(plateaus).toContain('No gift in 2025 or 2026: 2 households');
