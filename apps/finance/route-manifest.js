@@ -247,6 +247,8 @@ const ROUTES = [
   { id: 'property-bank-rec-save-v1', paths: ['/api/v1/property/bank-rec-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.property-bank-rec-save.v1' },
   { id: 'property-bank-rec-remove-v1', paths: ['/api/v1/property/bank-rec-remove'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.property-bank-rec-remove.v1' },
   { id: 'property-rent-growth-save-v1', paths: ['/api/v1/property/rent-growth-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.property-rent-growth-save.v1' },
+  // Giving › Campaign capacity: the ZIP codes whose free Census figures are shown beside the projection. Admin-only form post.
+  { id: 'giving-benchmark-zips-save-v1', paths: ['/api/v1/giving/benchmark-zips-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.giving-benchmark-zips-save.v1' },
   { id: 'planning-scenario-save-v1', paths: ['/api/v1/planning/scenario-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.planning-scenario-save.v1' },
   { id: 'planning-scenario-basis-v1', paths: ['/api/v1/planning/scenario-basis'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.planning-scenario-basis.v1' },
   { id: 'planning-scenario-create-v1', paths: ['/api/v1/planning/scenario-create'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.planning-scenario-create.v1' },

@@ -42,6 +42,7 @@ import { fetchFinanceClassification } from './finance-classification-client.js';
 import { fetchFinancePropertyDebt } from './finance-property-debt-client.js';
 import { fetchFinancePropertyPolicy } from './finance-property-policy-client.js';
 import { resolvePageRole } from './role-cache.js';
+import { BENCHMARK_WRITERS, canEditBenchmarks, fetchNeighborhoodBenchmark, readBenchmarkZips } from './neighborhood-benchmark-service.js';
 import { PROPERTY_BOOKS_WRITERS, canEditPropertyBooks, readPropertyBooks, readRentGrowth } from './property-books-service.js';
 import { PROPERTY_BOOKS_STYLES, renderBankRecPage, renderReceivablesPage } from './property-books-pages.js';
 import { seedPropertyBooksFromReports } from './property-books-seed.js';
@@ -1576,7 +1577,10 @@ function renderSectionBody(ctx) {
         canEdit: canEditPledges(roleResult, councilPreview), namedHidden, status,
       });
       case 'what-if': return renderWhatIfPage({ result: totals, params: ctx.searchParams, keep });
-      case 'campaign': return renderCampaignPage({ result: totals, params: ctx.searchParams, keep });
+      case 'campaign': return renderCampaignPage({
+        result: totals, params: ctx.searchParams, keep,
+        benchmark: ctx.campaignBenchmark ? { ...ctx.campaignBenchmark, canEdit: !councilPreview && canEditBenchmarks(roleResult), status: describeFormStatus(ctx.searchParams, 'campaign') } : null,
+      });
       case 'statements': return renderStatementsPage({ result: asResult(ctx.givingAnalyticsPeople), councilPreview: namedHidden });
       default: return renderTrendsPage({ result: totals, keep, mdoBooks: ctx.givingMdoBooks, canEditFunds: canEditNudges, status });
     }
@@ -3935,6 +3939,10 @@ export default {
       return handleFinanceFormWrite({ request, env, url, section: 'property', writer: PROPERTY_BOOKS_WRITERS[route.id], canEdit: canEditPropertyBooks });
     }
 
+    if (BENCHMARK_WRITERS[route.id]) {
+      return handleFinanceFormWrite({ request, env, url, section: 'giving-analytics', writer: BENCHMARK_WRITERS[route.id], canEdit: canEditBenchmarks });
+    }
+
     if (PLANNING_WRITERS[route.id]) {
       await ensurePlanningSchema(env.FINANCE_DB);
       return handleFinanceFormWrite({ request, env, url, section: 'planning', writer: PLANNING_WRITERS[route.id], canEdit: canEditPlanning });
@@ -4760,6 +4768,11 @@ export default {
             : { ok: false })).catch(() => ({ ok: false }))
           : null;
         let givingAnalyticsPeople = after(givingAnalyticsLoads, (loads) => loads[1]);
+        // Giving › Campaign capacity: the chosen ZIP codes and their free Census figures (never
+        // member data; a failed lookup only leaves that panel with a note).
+        let campaignBenchmark = analyticsPageId === 'campaign'
+          ? readBenchmarkZips(env.FINANCE_DB).then(async (zips) => ({ zips, result: zips.length ? await fetchNeighborhoodBenchmark(zips) : null })).catch(() => ({ zips: [], result: null }))
+          : null;
         // Giving › Reports: each page's own Connect reports, read together; Connect decides access
         // per report, and the named ones are not asked for in council preview.
         const reportsPageId = section.id === 'giving-reports' ? resolveFinancePage(section, pageId).id : null;
@@ -4805,7 +4818,7 @@ export default {
           : null;
         // Every load above started without waiting on the others; one slow Connect answer now
         // costs its own timeout once, not once per section read in turn.
-        [summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear] = await Promise.all([summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, facilities, gymIncome, payrollBundle, financeHealth, churchYear]);
+        [summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, facilities, gymIncome, payrollBundle, financeHealth, churchYear] = await Promise.all([summary, churchReport, churchReportLive, churchTrendLive, balanceSheet, balanceTrends, daycareReportLive, daycareEntries, propertyReport, propertyReserves, propertyLedgers, propertyValuation, propertyPolicy, propertyBooks, propertyDebt, propertyReportLive, propertyReservesLive, propertyLedgersLive, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, budgetBuilder, boardLayoutResult, boardLayout, planningBasis, planningScenarios, planningRunway, accountsReport, quickbooksOwn, quickbooksBackups, quickbooksTransactions, importHistory, dataStatus, classification, importStatus, quickbooksSnapshot, daycarePreview, compensationReport, compensationReportLive, compensationBenchmarks, compensationBenefits, compensationPlanRaw, compensationProjection, cashRunway, giving, givingSource, hr, givingBatch, accessRoles, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, facilities, gymIncome, payrollBundle, financeHealth, churchYear]);
         const balancePriorYear = await balancePriorYearLoad;
         const finalSelectionOwner = selectionOwner(roleResult);
         const finalSelection = url.searchParams.get('print') !== '1' && env.FINANCE_DB && finalSelectionOwner && (isSelectable(section.id) || section.id === 'packet')
@@ -4827,7 +4840,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,
