@@ -14,7 +14,8 @@ fixtures, or documentation.
   (including the full compensation planner model and private council drafts, and the yearly rent
   increase the Commercial Property Debt page's income estimate opens with,
   `finance_property_rent_growth_pct`, the board packet cover-letter template `board_packet_cover_template`,
-  and each person's final report list, `board_final_report_<username>`).
+  each person's final report list, `board_final_report_<username>`, and the ZIP codes Giving › Campaign
+  capacity compares with, `finance_campaign_benchmark_zips`).
   The accounting tables (the list is `FINANCE_TABLES` in `src/finance-storage.js`) were copied from
   Connect's database at the September 23, 2026 cutover (13,411 rows across 14 tables, verified row by
   row against the frozen source). Finance is now the only writer.
@@ -23,6 +24,15 @@ fixtures, or documentation.
   the role cache, and the QuickBooks connection, snapshot cache, OAuth state and sync backups.
 - Finance's own QuickBooks connection. Connect's QuickBooks code, secrets and tables were removed
   September 28, 2026.
+
+## Outside data Finance reads
+
+- Giving › Campaign capacity shows free U.S. Census Bureau figures (American Community Survey 5-year
+  estimates: households, median and average income) for the ZIP codes an admin chooses. They are read
+  from Census Reporter (`api.censusreporter.org`, the same published tables, no key) and cached for a
+  week. Only the ZIP codes leave Finance; no member, address or gift is sent, and nothing from the
+  response is stored beyond the cache. The figures describe neighborhoods, never the church's households.
+  The Census Bureau's own API now requires a key; if an admin gets one, the lookup can move to it.
 
 ## Connect owns
 

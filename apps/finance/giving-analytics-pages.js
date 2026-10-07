@@ -5,6 +5,7 @@
 // name nobody, so council may read them. Statements and nudges name households, so Connect only
 // returns them for Giving view access, and council preview here shows the same refusal.
 import { escapeHtml as e } from './render-helpers.js';
+import { MAX_BENCHMARK_ZIPS } from './neighborhood-benchmark-service.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -666,6 +667,51 @@ export function projectCampaign(h, params) {
   return { inputs, t12Cents, scenarios, bandCount: bands.length };
 }
 
+// The free Census figures for the church's chosen ZIP codes, set beside the Likely/Cautious/
+// Stretch views. `benchmark` is { zips, result, canEdit, status }; result is the figures (or why
+// there are none). Nothing here depends on, or reveals, any household.
+function renderBenchmarkPanel({ benchmark, scenarios, h }) {
+  const { zips = [], result, canEdit, status } = benchmark;
+  const statusLine = status ? `<p class="status ${status.ok ? 'status-ok' : 'status-error'}">${e(status.message)}</p>` : '';
+  const form = canEdit
+    ? `<form method="POST" action="/api/v1/giving/benchmark-zips-save" class="inline-form ga-zips">
+        <label class="field"><span>ZIP codes to compare with</span><input type="text" name="zips" value="${e(zips.join(', '))}" maxlength="120" placeholder="63119, 63122" inputmode="numeric" autocomplete="off"></label>
+        <button type="submit" class="button-outline">Save ZIP codes</button>
+      </form><p class="muted-line">Up to ${MAX_BENCHMARK_ZIPS} ZIP codes, usually the ones around the church where most of the congregation lives. Only these ZIP codes are sent to look up the Census figures; no member or giving information leaves Finance.</p>`
+    : (zips.length ? `<p class="muted-line">ZIP codes compared: ${e(zips.join(', '))}. An administrator can change them.</p>` : '');
+  const head = `<div class="panel panel-spaced list-panel"><h2>Neighborhood benchmarks</h2>${statusLine}`;
+  if (!zips.length) {
+    return `${head}<p class="muted-line">Free Census Bureau figures for the neighborhoods around the church: how many households live there and what they earn. They show whether the extra giving above is in proportion to the community, and nothing about any member.</p>
+      ${canEdit ? form : '<div class="empty-note">An administrator has not chosen ZIP codes to compare with yet.</div>'}</div>`;
+  }
+  if (!result?.ok) return `${head}${form}<div class="empty-note">${e(result?.message || 'The Census figures could not be loaded right now.')}</div><p class="muted-line">Everything above is from the church’s own giving and is not affected.</p></div>`;
+  const t = result.total;
+  const income = (dollars) => (dollars ? money(dollars * 100) : '—');
+  const rows = result.rows.map((r) => (r.missing
+    ? `<tr class="is-quiet"><td>${e(r.zip)}</td><td colspan="5">No Census figures for this ZIP code</td></tr>`
+    : `<tr><td>${e(r.zip)}</td><td>${r.households.toLocaleString('en-US')}</td><td>${income(r.medianIncome)}</td><td>${income(r.meanIncome)}</td><td>${pct(r.under50k)}</td><td>${pct(r.over100k)}</td></tr>`)).join('');
+  const avgGiving = h.t12_households ? h.t12_cents / h.t12_households : 0;
+  const mean = t.meanIncome;
+  const local = scenarios.map((s) => {
+    const each = s.participants >= 1 ? s.perYearCents / s.participants : 0;
+    return `<tr${s.key === 'likely' ? ' class="total-row"' : ''}><td><b>${s.label}</b></td><td>${money(each)}</td><td>${money(each / 12)}</td><td>${mean && each ? pct(each / 100 / mean, 1) : '—'}</td></tr>`;
+  }).join('');
+  const release = result.release?.years ? `American Community Survey ${e(result.release.years)} 5-year estimates` : 'American Community Survey 5-year estimates';
+  return `${head}${form}
+    <div class="table-scroll"><table class="pm-table ga-num"><thead><tr><th>ZIP code</th><th>Households</th><th>Median income</th><th>Average income</th><th>Under $50k</th><th>$100k and up</th></tr></thead>
+      <tbody>${rows}<tr class="total-row"><td>All ${t.zips} together</td><td>${t.households.toLocaleString('en-US')}</td><td>${income(t.medianIncome)}<div class="ga-note">weighted average</div></td><td>${income(t.meanIncome)}</td><td>${pct(t.under50k)}</td><td>${pct(t.over100k)}</td></tr></tbody></table></div>
+    <h3>What the extra giving means locally</h3>
+    <div class="table-scroll"><table class="pm-table ga-num"><thead><tr><th>Scenario</th><th>Extra per household taking part, each year</th><th>Each month</th><th>As a share of average household income here</th></tr></thead>
+      <tbody>${local}</tbody></table></div>
+    <p class="muted-line">${mean && avgGiving ? `Today the average giving household gives ${money(avgGiving)} a year, about ${pct(avgGiving / 100 / mean, 1)} of the average household income in these ZIP codes. ` : ''}A campaign ask that is small next to local incomes is easier to meet; one that is large asks more than most households here have to give.</p>
+    <ul class="ga-cautions">
+      <li>These are neighborhoods, not our members. People attend from many places, and the households who live in a ZIP code are mostly not in the congregation.</li>
+      <li>Average income is higher than the median because a few high earners pull it up; both are shown. The weighted median is an approximation across ZIP codes.</li>
+      <li>Incomes are before tax, include retirement and Social Security income, and are 5-year estimates with a margin of error, larger for small ZIP codes.</li>
+    </ul>
+    <p class="muted-line">Source: U.S. Census Bureau, ${release}, read through Census Reporter. They update once a year.</p></div>`;
+}
+
 function campaignMethod(a, base) {
   const h = a.households;
   const [, m, d] = a.as_of.split('-').map(Number);
@@ -683,11 +729,12 @@ function campaignMethod(a, base) {
       ${item('Cautious and Stretch', 'Cautious takes 65% of the Likely participation and extra giving; Stretch takes 130% (no tier is taken above 95% participation).', '')}
       ${item('Three to five years', 'The yearly extra is multiplied by 3, 4 or 5 years. Most campaign commitments run three years, so the 4 and 5 year columns assume a second push or a longer commitment at the same level.', '')}
       ${item('What is not counted', 'One-time gifts of stock, property or an estate, grants, and gifts from outside the congregation. Organizations and anonymous plate cash are not part of any household. These can add to a campaign, and are not here.', '')}
+      ${item('Neighborhood benchmarks', 'Free Census Bureau figures for ZIP codes an administrator chooses. They are set beside the extra giving as a sense of proportion. They do not change any number above and describe neighborhoods, never members.', '')}
       ${item('Where to be careful', 'Households are grouped, so this reflects how giving is spread across the congregation, not the plans of any family. Treat it as a way to ask “is a goal like this in range?”, not as a goal.', '')}
     </ul></div>`;
 }
 
-export function renderCampaignPage({ result, params, keep = {} }) {
+export function renderCampaignPage({ result, params, keep = {}, benchmark = null }) {
   if (!result.ok) return unavailable('Campaign capacity', result.message);
   const a = result.data;
   const h = a.households;
@@ -738,6 +785,7 @@ export function renderCampaignPage({ result, params, keep = {} }) {
     <div class="panel panel-spaced list-panel"><h2>Where the Likely figure comes from</h2><div class="table-scroll"><table class="pm-table ga-num"><thead><tr><th>Band</th><th>Households</th><th>Taking part</th><th>Extra each, per year</th><th>Extra each year</th><th>3 years</th></tr></thead>
       <tbody>${bandRows}<tr class="total-row"><td>All households</td><td>${h.t12_households}</td><td>${Math.round(likely.participants)}</td><td>—</td><td>${money(likely.perYearCents)}</td><td>${money(likely.byYears[3])}</td></tr></tbody></table></div>
       <p class="muted-line">Averages for a band, never a household. A campaign is carried by many gifts of different sizes; the larger bands matter most, as in the <a href="/?section=charts&amp;page=concentration">giving concentration</a> chart.</p></div>
+    ${benchmark ? renderBenchmarkPanel({ benchmark, scenarios: p.scenarios, h }) : ''}
     ${campaignMethod(a, p)}`;
 }
 
@@ -853,6 +901,8 @@ export const GIVING_ANALYTICS_STYLES = `
     .ga-projection dl div { display:flex; justify-content:space-between; padding:8px 0; }
     .ga-projection dt { color:#DCE3EE; }
     .ga-projection dd { margin:0; font-weight:600; }
+    .ga-zips { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+    .ga-cautions { margin:10px 0; padding-left:20px; color:#4B5563; font-size:13.5px; }
     .ga-tier { border-top:1px solid #EEF0F4; padding-top:10px; margin-top:10px; }
     .ga-tier h3 { margin:0 0 2px; font-size:15px; }
     .ga-note { color:#6B7280; font-size:12.5px; font-weight:400; }
