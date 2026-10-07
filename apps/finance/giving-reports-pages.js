@@ -49,7 +49,14 @@ export function givingReportParams(params, today) {
   const freq = bandsView === 'annual' ? pick('freq', ['weekly', 'monthly'], 'weekly') : bandsView;
   const upliftRaw = params.get('uplift');
   const uplift = upliftRaw != null && upliftRaw !== '' && Number.isFinite(Number(upliftRaw)) ? Math.min(1000, Math.max(0, Math.round(Number(upliftRaw)))) : (freq === 'monthly' ? 40 : 10);
+  // What regular givers are assumed to add each week (the middle option is $25) and what share of them
+  // say yes. These only drive the planning estimate on Nudges and next steps; Connect is not asked.
+  const pickNumber = (key, def, lo, hi) => {
+    const raw = params.get(key);
+    return raw != null && raw !== '' && Number.isFinite(Number(raw)) ? Math.min(hi, Math.max(lo, Math.round(Number(raw)))) : def;
+  };
   return {
+    regularWeekly: pickNumber('regular_weekly', 25, 0, 500), regularShare: pickNumber('regular_share', 100, 0, 100),
     year: Number.isInteger(y) && y >= 2000 && y <= year + 1 ? y : year, thisYear: year,
     scope: pick('scope', ['household', 'person'], 'household'),
     from: from <= to ? from : to, to: from <= to ? to : from, fund, lowFreq, freq, uplift, bandsView,
@@ -382,7 +389,7 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
   const banner = status ? `<p class="status${status.ok ? '' : ' status-error'}">${e(status.message)}</p>` : '';
   const kind = /^[a-z_]{1,20}$/.test(searchParams?.get('kind') || '') ? searchParams.get('kind') : '';
   const pageQuery = (extra) => {
-    const q = new URLSearchParams({ section: 'giving-reports', page: 'plateaus', year: String(p.year), scope: p.scope, ...(p.fund ? { fund_id: p.fund } : {}), low_frequency_max: String(p.lowFreq), ...keep, ...extra });
+    const q = new URLSearchParams({ section: 'giving-reports', page: 'plateaus', year: String(p.year), scope: p.scope, ...(p.fund ? { fund_id: p.fund } : {}), low_frequency_max: String(p.lowFreq), regular_weekly: String(p.regularWeekly), regular_share: String(p.regularShare), ...keep, ...extra });
     return `/?${q.toString().replace(/&/g, '&amp;')}`;
   };
   const queue = `<section class="gr-part"><h2 class="gr-part-title">Follow-up queue</h2>
@@ -390,7 +397,9 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
     ${renderNudgeQueue({ result: nudges.result || { ok: false, message: 'not requested' }, totals: nudges.totals, params: searchParams, canEdit: !!nudges.canEdit && !keep.council, kindHref: (key) => pageQuery({ kind: key }) })}</section>`;
   const [res, impact, funds] = results;
   const form = controls('plateaus', yearSelect(p) + fundSelect(p, funds?.ok ? funds.data.funds : []) + scopeSelect(p)
-    + `<label>Occasional: gifts a year, at most <input type="number" name="low_frequency_max" min="1" max="51" value="${p.lowFreq}" class="gr-small"></label>${kind ? hidden('kind', kind) : ''}`, keep);
+    + `<label>Occasional: gifts a year, at most <input type="number" name="low_frequency_max" min="1" max="51" value="${p.lowFreq}" class="gr-small"></label>`
+    + `<label>Regular givers add $ a week <input type="number" name="regular_weekly" min="0" max="500" step="1" value="${p.regularWeekly}" class="gr-small"></label>`
+    + `<label>% who say yes <input type="number" name="regular_share" min="0" max="100" step="1" value="${p.regularShare}" class="gr-small"></label>${kind ? hidden('kind', kind) : ''}`, keep);
   const ladderHead = `<h2 class="gr-part-title">Next steps: three goals</h2><p class="muted">Rare givers start giving, irregular givers automate, and regular givers increase. Retirement distributions and other large annual gifts are handled on their own. Only member households are included. Funds that share an account code, such as every 40085 fund, count as one.</p>`;
   if (!res.ok) return `${banner}${queue}<section class="gr-part">${ladderHead}${form}${unavailable('The plateau report', res.data?.error || res.message)}${impactPanel(impact, keep)}</section>`;
   const d = res.data;
@@ -414,12 +423,22 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
     ? { fields: hidden('year', p.year) + hidden('scope', p.scope) + (p.fund ? hidden('fund_id', p.fund) : '') + hidden('low_frequency_max', p.lowFreq) } : null;
   const grouped = Array.isArray(d.groups) && d.groups.length ? groupBlocks(d, who, who1, edit) : null;
   const notYet = grouped ? (d.groups.find((g) => g.key === 'rare')?.num_people || 0) + (d.groups.find((g) => g.key === 'irregular')?.num_people || 0) : null;
+  // A planning estimate for regular givers: the number you type is the weekly increase a typical
+  // regular household is assumed to take (the middle option is $25), and the share who say yes.
+  const regularGroup = (d.groups || []).find((g) => g.key === 'regular');
+  const estimateCard = regularGroup?.num_people
+    ? (() => {
+        const takers = Math.round(regularGroup.num_people * p.regularShare) / 100;
+        const yearly = Math.round(takers * p.regularWeekly * 52) * 100;
+        return card('Planning estimate', `+${money(yearly)}`, `a year if ${p.regularShare}% of ${plural(regularGroup.num_people, who1, who)} give ${money(p.regularWeekly * 100)} more a week (about ${money(Math.round(p.regularWeekly * 52 / 12) * 100)} a month)`);
+      })()
+    : '';
   const thirdCard = grouped ? card('Not yet regular', String(notYet), 'rare and irregular givers') : card('Occasional givers', String(s.low_frequency_givers), `${p.lowFreq} gifts a year or fewer`);
   const targets = grouped
     ? `${grouped.steps}<section class="gr-card"><h2>All groups</h2><p class="muted">Every ${who1} is in exactly one group. Added a year runs from the Modest to the Generous ask.</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Group</th><th>Goal</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Added a year</th></tr></thead><tbody>${d.groups.map((g) => `<tr><td>${e(g.label)}</td><td>${e(g.goal)}</td><td>${g.num_people}</td><td>${g.num_people ? addedRange(g.upside_modest_annual_cents, g.upside_generous_annual_cents) : '—'}</td></tr>`).join('')}<tr class="total-row"><td>Total</td><td></td><td>${s.total_givers}</td><td>+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}</td></tr></tbody></table></div></section>`
     : `<section class="gr-card"><h2>Nudge targets <small>standard option</small></h2><p class="muted">Each ${who1} is grouped by the next round weekly amount above what they give now; Modest, Standard and Generous are the next three steps.</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Nudge to</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Now</th><th>Average increase</th><th>Added a year</th></tr></thead><tbody>${tierRows}<tr class="total-row"><td>Total</td><td>${s.total_givers}</td><td></td><td></td><td>+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}</td></tr></tbody></table></div></section>`;
   const whoIs = `<section class="gr-card"><h2>Who is in each step</h2>${grouped && edit ? '<p class="muted">If someone is in the wrong group, change it in the Group column and press Move. A household you move stays there until you set it back to Automatic.</p>' : ''}${grouped ? grouped.people : tierPeople}</section>`;
-  return `${banner}${queue}<section class="gr-part">${ladderHead}${form}<div class="grid">${card(`Giving ${who}`, String(s.total_givers), `Weekly amounts are ${weeks}`)}${card('If each took the next step', `+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}`, 'a year, modest to generous')}${thirdCard}</div>${excl}
+  return `${banner}${queue}<section class="gr-part">${ladderHead}${form}<div class="grid">${card(`Giving ${who}`, String(s.total_givers), `Weekly amounts are ${weeks}`)}${card('If each took the next step', `+${money(s.total_upside_modest_annual_cents)}–${money(s.total_upside_generous_annual_cents)}`, 'a year, modest to generous')}${thirdCard}${estimateCard}</div>${excl}
     ${targets}
     ${whoIs}${nonGiverBlocks(d.non_givers, d, who, who1, !!p.fund)}${occBlock}${histogram}${impactPanel(impact, keep)}</section>`;
 }
