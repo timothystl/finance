@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import worker from '../apps/finance/shell.js';
 import { givingReportParams, givingReportRequests, impactStatementsFromForm, pearson } from '../apps/finance/giving-reports-pages.js';
+import { NUDGE_BANDS_LIVE_JS, computeBandPreview, formatBandRow } from '../apps/finance/nudge-bands-live.js';
 import { roleCanAccessSection } from '../apps/finance/connect-role-client.js';
 import { FINANCE_PARITY_SECTIONS } from '../apps/finance/parity-manifest.js';
 
@@ -163,6 +164,20 @@ describe('Finance › Giving reports', () => {
     expect(await page(env(), 'plateaus', '&year=2026&regular_weekly=99999&regular_share=-5')).toContain('<strong>+$0</strong>');
   });
 
+  it('serves the live preview script from this Worker, and only to people who can edit', async () => {
+    const e = env();
+    const asset = await call(e, '/nudge-bands/live.js');
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get('Content-Type')).toContain('text/javascript');
+    expect(await asset.text()).toBe(NUDGE_BANDS_LIVE_JS);
+    const view = await call(e, '/?section=giving-reports&page=plateaus&year=2026');
+    expect(view.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
+    const readOnly = await page(env('finance', { finance: 'view', giving: 'view' }), 'plateaus', '&year=2026');
+    expect(readOnly).not.toContain('/nudge-bands/live.js');
+    expect(readOnly).not.toContain('data-nudge-bands');
+    expect(readOnly).toContain('$25/wk band');
+  });
+
   it('saves the weekly increases band by band, or puts the defaults back, and returns to the same report', async () => {
     const e = env();
     const post = (fields) => call(e, '/api/v1/giving-nudge-bands', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ year: '2026', scope: 'household', regular_weekly: '25', regular_share: '100', ...fields }) });
@@ -209,11 +224,16 @@ describe('Finance › Giving reports', () => {
     expect(plateaus).toContain('<b>$400/mo</b><small>$4,800 a year, +$3,600</small>');
     expect(plateaus).toContain('<th>If automated</th>');
     // Regular givers' weekly increases are editable, band by band, and say when they differ from the defaults.
-    expect(plateaus).toContain('Change the weekly increases (changed from the defaults)');
+    // The bands are boxes in the table itself, redrawn as you type; the figures are the server's first view.
     expect(plateaus).toContain('action="/api/v1/giving-nudge-bands"');
-    expect(plateaus).toContain('name="from_2" min="0" step="1" value="100"');
-    expect(plateaus).toContain('name="step_2" min="1" step="1" value="60"');
-    expect(plateaus).toContain('name="from_4" min="0" step="1" value=""');
+    expect(plateaus).toContain('name="from_2" data-band-from min="0" step="1" value="100"');
+    expect(plateaus).toContain('name="step_2" data-band-step min="1" step="1" value="60"');
+    expect(plateaus).toContain('name="from_4" data-band-from min="0" step="1" value=""');
+    expect(plateaus).toContain('data-weekly="[40]"');
+    expect(plateaus).toContain('<td data-col="now">$40–$40/wk</td><td data-col="typical">+$25/wk</td><td data-col="added">+$520–$2,080</td>');
+    expect(plateaus).toContain('<script src="/nudge-bands/live.js?v=');
+    expect(plateaus).toContain('data-live-headline data-rest-modest="52000" data-rest-generous="104000"');
+    expect(plateaus).toContain('Put the defaults back (these differ from them)');
     expect(plateaus).toContain('Not giving <small>Start giving</small>');
     // Planning estimate: the one regular household at the default $25 a week, everyone saying yes.
     expect(plateaus).toContain('<strong>+$1,300</strong>');
@@ -285,5 +305,31 @@ describe('Finance › Giving reports', () => {
     const p = givingReportParams(new URLSearchParams('year=1999&scope=everyone&from=2026-05-01&to=2026-02-01&fund_id=4;drop&freq=monthly&uplift=abc'), '2026-09-28');
     expect(p).toMatchObject({ year: 2026, scope: 'household', from: '2026-02-01', to: '2026-05-01', fund: '', freq: 'monthly', uplift: 40 });
     expect(givingReportRequests('bands', p)[0][1]).toMatchObject({ uplift_cents: 4000, freq: 'monthly' });
+  });
+});
+
+describe('Nudge bands live preview', () => {
+  const weekly = [5, 8, 30, 40, 78, 90, 140, 200, 310, 500];
+  const bands = [{ from: 0, step: 10 }, { from: 25, step: 25 }, { from: 75, step: 45 }, { from: 150, step: 50 }, { from: 300, step: 75 }];
+  it('counts each band, ranges and yearly totals the way Connect does', () => {
+    const { rows, total } = computeBandPreview(weekly, bands);
+    expect(rows.map((r) => r.count)).toEqual([2, 2, 3, 1, 2]);
+    expect(rows[2]).toMatchObject({ from: 75, to: 149, step: 45, nowMin: 78, nowMax: 140, modestYear: 3 * 20 * 52, generousYear: 3 * 70 * 52 });
+    expect(rows[4]).toMatchObject({ from: 300, to: null, step: 75, modestYear: 2 * 30 * 52, generousYear: 2 * 120 * 52 });
+    expect(total.count).toBe(10);
+  });
+  it('follows an edited increase and an edited start, and lets the lowest band reach $0', () => {
+    const edited = computeBandPreview(weekly, [{ from: 10, step: 20 }, { from: 100, step: 60 }]);
+    expect(edited.rows[0]).toMatchObject({ from: 0, to: 99, count: 6, step: 20 });
+    expect(edited.rows[1]).toMatchObject({ from: 100, to: null, count: 4, step: 60 });
+  });
+  it('ignores blank, unfinished and duplicate rows, and says so with dashes', () => {
+    const { rows, total } = computeBandPreview(weekly, [{ from: 0, step: 10 }, { from: '', step: '' }, { from: 50, step: '' }, { from: 0, step: 99 }]);
+    expect(rows[1]).toBeNull();
+    expect(rows[2]).toBeNull();
+    expect(rows[3]).toBeNull();
+    expect(total.count).toBe(10);
+    expect(formatBandRow(null)).toEqual({ count: '—', now: '', typical: '', added: '' });
+    expect(formatBandRow(rows[0])).toMatchObject({ count: '10', now: '$5–$500/wk', typical: '+$10/wk' });
   });
 });

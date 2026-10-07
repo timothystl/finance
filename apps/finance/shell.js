@@ -3,6 +3,7 @@ import { handleTuitionApi, tuitionAidViewer } from './tuition-service.js';
 import { renderTuitionPage } from './tuition-pages.js';
 import { TUITION_PLANNER_JS } from './tuition-planner/bundle.generated.js';
 import { BUDGET_PLANNER_LIVE_JS } from './budget-planner-live.js';
+import { NUDGE_BANDS_LIVE_JS } from './nudge-bands-live.js';
 import { FINANCE_RELEASE_CHANNEL, financeVersion } from './version.js';
 import givingFixture from '../../contracts/examples/giving-summary-v1.synthetic.json';
 import { acceptConnectGivingSummaryV1 } from '../../contracts/validators/connect-giving-consumer.js';
@@ -2195,6 +2196,11 @@ export default {
       return response(request.method === 'HEAD' ? null : TUITION_PLANNER_JS, {
         headers: { 'Content-Type': 'text/javascript; charset=utf-8' },
       }, { cacheControl: 'private, max-age=86400' });
+    }
+    if (route.id === 'nudge-bands-asset') {
+      return response(request.method === 'HEAD' ? null : NUDGE_BANDS_LIVE_JS, {
+        headers: { 'Content-Type': 'text/javascript; charset=utf-8' },
+      }, { cacheControl: 'private, max-age=3600' });
     }
     if (route.id === 'budget-planner-asset') {
       return response(request.method === 'HEAD' ? null : BUDGET_PLANNER_LIVE_JS, {
@@ -4924,6 +4930,9 @@ export default {
         } else if (plannerPage && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', PLANNER_PAGE_CSP);
         } else if (section.id === 'planning' && effectivePageId === 'builder' && !printMode) {
+          shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);
+        } else if (section.id === 'giving-reports' && effectivePageId === 'plateaus' && !printMode) {
+          // Nudges and next steps: one script from this Worker previews the weekly increases as they are typed.
           shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);
         } else if (lettersPageId) {
           shellResponse.headers.set('Content-Security-Policy', DONOR_LETTERS_PAGE_CSP);
