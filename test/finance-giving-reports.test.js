@@ -41,6 +41,10 @@ const REPORTS = {
       people: [{ id: 'h:1', name: 'Sample Household', weekly_cents: 4000, total_cents: 160000, gifts: 40, cadence_label: 'weekly', low_frequency: false,
         options: [{ label: 'Modest', target_cents: 5000, delta_cents: 1000, annual_delta_cents: 52000, impact_text: 'a month of Sunday school supplies' }, { label: 'Standard', target_cents: 6000, delta_cents: 2000, annual_delta_cents: 104000 }, { label: 'Generous', target_cents: 7500, delta_cents: 3500, annual_delta_cents: 182000 }] }] }],
     distribution: [{ plateau_dollars: 40, n: 1 }, { plateau_dollars: 45, n: 0 }],
+    non_givers: { year: 2026, last_year: 2025,
+      lapsed: { num_people: 1, people: [{ key: 'h8', name: 'Lapsed Household', last_year_cents: 70000, last_gift: '2025-03-02', inactive: false }] },
+      dormant: { num_people: 2, people: [{ key: 'h9', name: 'Dormant Household', last_gift: '2023-11-05', inactive: true }, { key: 'p4', name: 'Dana Alone', last_gift: '', inactive: false }] },
+      members_without_household: { count: 1, people: [{ id: 4, name: 'Dana Alone', inactive: false }] } },
     low_frequency_givers_list: [{ id: 'p:3', name: 'Cara Example', total_cents: 30000, gifts: 2, avg_gift_cents: 15000, all_manual_methods: true }] },
   bands: { year: 2026, scope: 'household', freq: 'weekly', partial: false, periods_elapsed: 52, periods_per_year: 52, uplift_cents: 1000,
     summary: { givers: 2, total_cents: 300000, current_annualized_cents: 300000, uplift_annual_cents: 104000 },
@@ -175,6 +179,12 @@ describe('Finance › Giving reports', () => {
     expect(plateaus).toContain('Irregular givers <small>Automate their giving</small>');
     expect(plateaus).toContain('<b>$400/mo</b><small>$4,800 a year, +$3,600</small>');
     expect(plateaus).toContain('<th>If automated</th>');
+    expect(plateaus).toContain('Not giving <small>Start giving</small>');
+    expect(plateaus).toContain('Gave in 2025, nothing in 2026: 1 household');
+    expect(plateaus).toContain('<td>Lapsed Household</td><td>$700</td><td>Mar 2, 2025</td>');
+    expect(plateaus).toContain('No gift in 2025 or 2026: 2 households');
+    expect(plateaus).toContain('Dormant Household<small>record marked inactive</small>');
+    expect(plateaus).toContain('Members not in a household <small>needs fixing</small>');
     // Giving edit can move a household: the form names the household and keeps the report's settings.
     expect(plateaus).toContain('action="/api/v1/giving-nudge-group"');
     expect(plateaus).toContain('name="recipient_key" value="h1"');
