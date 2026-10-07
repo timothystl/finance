@@ -326,7 +326,7 @@ function optionCell(o, group = 'regular') {
 const GROUP_BLURBS = {
   rare: 'Gave a few times this year. The ask is a standing monthly gift, starting just above what they gave per month.',
   irregular: 'Gave several times, but less than about once a month while they have been giving. No increase is guessed: the ask is only to automate, a standing monthly gift at their average gift, and the figure shown is what that would come to in a year.',
-  regular: 'Gave about once a month or more often while they have been giving, so weekly and monthly givers both count. The increase is set by what they give now: +$10 a week under $25, +$25 under $75, +$45 from $75 a week. Modest and Generous bracket that step.',
+  regular: 'Gave about once a month or more often while they have been giving, so weekly and monthly givers both count. The increase asked grows with what they give now, in the bands below (you can change them). Modest and Generous bracket each band’s increase.',
   large_gift: 'A few gifts, each in the thousands, such as a retirement distribution. They are thanked, and offered a modest percentage more, not asked to start giving.',
 };
 const GROUP_LABELS = { rare: 'Rare', irregular: 'Irregular', regular: 'Regular', large_gift: 'Large annual gift' };
@@ -357,12 +357,25 @@ function nonGiverBlocks(ng, d, who, who1, fundScoped) {
   const flag = nh?.count ? `<section class="gr-card"><h2>Members not in a household <small>needs fixing</small></h2><p class="status status-error">${plural(nh.count, 'member')} ${nh.count === 1 ? 'is' : 'are'} not in a household. Every member should be in one, so these people are counted alone above. Add them to a household in Connect.</p><ul class="row-list">${nh.people.map((x) => `<li>${e(x.name)}${x.inactive ? ' <small>record marked inactive</small>' : ''}</li>`).join('')}</ul>${nh.people.length < nh.count ? `<p class="gr-caption">Showing the first ${nh.people.length} of ${nh.count}.</p>` : ''}</section>` : '';
   return block + flag;
 }
+// The weekly increase asked of regular givers, band by band: staff edit it here (Giving edit; Connect
+// checks again) and the report and the nudge letters both follow the saved set.
+function bandsEditor(d, edit) {
+  if (!edit || !Array.isArray(d.regular_bands)) return '';
+  const rows = d.regular_bands.slice();
+  while (rows.length < Math.min(12, d.regular_bands.length + 2)) rows.push({ from: '', step: '' });
+  const same = JSON.stringify(d.regular_bands) === JSON.stringify(d.regular_bands_default);
+  return `<details class="gr-edit"><summary>Change the weekly increases${same ? '' : ' (changed from the defaults)'}</summary>
+    <form method="POST" action="/api/v1/giving-nudge-bands" class="gr-impact-form">${edit.fields}${hidden('regular_weekly', edit.regularWeekly)}${hidden('regular_share', edit.regularShare)}
+    ${rows.map((b, i) => `<div class="gr-impact-row"><label>From $ a week <input type="number" name="from_${i}" min="0" step="1" value="${e(b.from)}"></label><label>Ask them to add $ a week <input type="number" name="step_${i}" min="1" step="1" value="${e(b.step)}"></label></div>`).join('')}
+    <p class="gr-caption">Each row starts at that weekly amount and runs to the next row, so someone giving $78 a week and someone giving $500 can be asked for different amounts. Leave a row blank to remove it. The first row always starts at $0. Modest and Generous are worked out from the increase (about 40% and 160% of it). These amounts are used in the nudge letters too.</p>
+    <button type="submit">Save</button> <button type="submit" name="op" value="reset">Put the defaults back</button></form></details>`;
+}
 function groupBlocks(d, who, who1, edit) {
   const groups = (d.groups || []).filter((g) => g.num_people > 0);
   const steps = groups.map((g) => {
     const weekly = g.key === 'regular';
     const rows = g.steps.map((t) => `<tr><td>${e(t.label)}</td><td>${t.num_people}</td><td>${weekly ? `${money(t.now_min_cents)}–${money(t.now_max_cents)}/wk` : `${money(t.now_min_cents * 52)}–${money(t.now_max_cents * 52)}/yr`}</td><td>${weekly ? `+${wk(t.avg_weekly_increase_cents)}` : `+${money(Math.round(t.upside_standard_annual_cents / Math.max(1, t.num_people)))}/yr`}</td><td>${addedRange(t.upside_modest_annual_cents, t.upside_generous_annual_cents)}</td></tr>`).join('');
-    return `<section class="gr-card"><h2>${e(g.label)} <small>${e(g.goal)}</small></h2><p class="muted">${plural(g.num_people, who1, who)}. ${GROUP_BLURBS[g.key] || ''}${g.not_automated ? ` ${g.not_automated} of them ${g.not_automated === 1 ? 'has' : 'have'} given only by check or cash, so a standing online gift would suit ${g.not_automated === 1 ? 'them' : 'them'}.` : ''}</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Step</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Now</th><th>Typical increase</th><th>Added a year</th></tr></thead><tbody>${rows}${g.steps.length > 1 ? `<tr class="total-row"><td>Total</td><td>${g.num_people}</td><td></td><td></td><td>${addedRange(g.upside_modest_annual_cents, g.upside_generous_annual_cents)}</td></tr>` : ''}</tbody></table></div></section>`;
+    return `<section class="gr-card"><h2>${e(g.label)} <small>${e(g.goal)}</small></h2><p class="muted">${plural(g.num_people, who1, who)}. ${GROUP_BLURBS[g.key] || ''}${g.not_automated ? ` ${g.not_automated} of them ${g.not_automated === 1 ? 'has' : 'have'} given only by check or cash, so a standing online gift would suit ${g.not_automated === 1 ? 'them' : 'them'}.` : ''}</p><div class="table-wrap"><table class="gr-num"><thead><tr><th>Step</th><th>${who[0].toUpperCase() + who.slice(1)}</th><th>Now</th><th>Typical increase</th><th>Added a year</th></tr></thead><tbody>${rows}${g.steps.length > 1 ? `<tr class="total-row"><td>Total</td><td>${g.num_people}</td><td></td><td></td><td>${addedRange(g.upside_modest_annual_cents, g.upside_generous_annual_cents)}</td></tr>` : ''}</tbody></table></div>${g.key === 'regular' ? bandsEditor(d, edit) : ''}</section>`;
   }).join('');
   const people = groups.map((g) => `<details class="gr-tier"><summary>${e(g.label)}: ${plural(g.num_people, who1, who)} — ${e(g.goal.toLowerCase())}</summary>${g.steps.map((t) => `<h3 class="gr-step">${e(t.label)} · ${plural(t.num_people, who1, who)}</h3><div class="table-wrap"><table class="gr-num gr-options"><thead><tr><th>${d.scope === 'person' ? 'Name' : 'Household'}</th><th>Now</th>${g.key === 'irregular' ? '<th>If automated</th>' : '<th>Modest</th><th>Standard</th><th>Generous</th>'}${edit ? '<th>Group</th>' : ''}</tr></thead>
     <tbody>${t.people.map((x) => `<tr><td>${e(x.name)}${x.moved_from ? `<small>moved by hand; the rule would say ${e(GROUP_LABELS[x.moved_from] || x.moved_from)}</small>` : ''}</td><td>${g.key === 'regular' ? `<b>${wk(x.weekly_cents)}</b><small>${plural(x.gifts, 'gift')}${x.cadence_label ? `, ${e(x.cadence_label)}` : ''}</small>` : `<b>${money(x.total_cents)}</b><small>${plural(x.gifts, 'gift')}${x.months_given != null ? `, ${plural(x.months_given, 'month')}` : ''}</small>`}</td>${(g.key === 'irregular' ? [0] : [0, 1, 2]).map((i) => `<td>${optionCell(x.options?.[i], g.key)}</td>`).join('')}${edit ? `<td>${moveForm(x, g, edit)}</td>` : ''}</tr>`).join('')}</tbody></table></div>${t.people.length < t.num_people ? `<p class="gr-caption">Showing the first ${t.people.length} of ${t.num_people}.</p>` : ''}`).join('')}</details>`).join('');
@@ -420,7 +433,7 @@ export function renderPlateausPage({ results, params: p, keep, namedHidden, stat
   const maxN = Math.max(...dist.map((x) => x.n), 1);
   const histogram = dist.length ? `<section class="gr-card"><h2>Weekly-equivalent giving</h2><div class="gr-hist">${dist.map((x) => `<span style="height:${(x.n / maxN * 100).toFixed(1)}%" title="$${x.plateau_dollars}/wk: ${x.n}"></span>`).join('')}</div><div class="gr-axisrow"><span>$${dist[0].plateau_dollars}/wk</span><span>$${dist[dist.length - 1].plateau_dollars}/wk</span></div></section>` : '';
   const edit = nudges.canEdit && !keep.council
-    ? { fields: hidden('year', p.year) + hidden('scope', p.scope) + (p.fund ? hidden('fund_id', p.fund) : '') + hidden('low_frequency_max', p.lowFreq) } : null;
+    ? { fields: hidden('year', p.year) + hidden('scope', p.scope) + (p.fund ? hidden('fund_id', p.fund) : '') + hidden('low_frequency_max', p.lowFreq), regularWeekly: p.regularWeekly, regularShare: p.regularShare } : null;
   const grouped = Array.isArray(d.groups) && d.groups.length ? groupBlocks(d, who, who1, edit) : null;
   const notYet = grouped ? (d.groups.find((g) => g.key === 'rare')?.num_people || 0) + (d.groups.find((g) => g.key === 'irregular')?.num_people || 0) : null;
   // A planning estimate for regular givers: the number you type is the weekly increase a typical

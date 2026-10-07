@@ -35,6 +35,10 @@ export function postGivingFundCleanup(env, accessJwt, body) {
   return callConnectContract(env, accessJwt, 'giving-fund-cleanup-write-v1', { method: 'POST', body });
 }
 
+export function postGivingNudgeBandsWrite(env, accessJwt, body) {
+  return callConnectContract(env, accessJwt, 'giving-nudge-bands-write-v1', { method: 'POST', body });
+}
+
 export function postGivingNudgeGroupWrite(env, accessJwt, body) {
   return callConnectContract(env, accessJwt, 'giving-nudge-group-write-v1', { method: 'POST', body });
 }

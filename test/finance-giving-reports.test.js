@@ -23,7 +23,8 @@ const REPORTS = {
   yoy: { base_year: 2026, years: ['2024', '2025', '2026'], people: [
     { id: 1, first_name: 'Ada', last_name: 'Sample', member_type: 'member', by_year: { 2025: { total_cents: 300000 }, 2026: { total_cents: 400000 } }, curr_total: 400000, prior_total: 300000, change_cents: 100000, change_pct: 33.3 },
     { id: 3, first_name: 'Cara', last_name: 'Example', member_type: '', by_year: { 2025: { total_cents: 90000 } }, curr_total: 0, prior_total: 90000, change_cents: -90000, change_pct: -100 }] },
-  plateaus: { year: 2026, scope: 'household', partial: true, low_frequency_max: 3, excluded_organizations: { count: 1, total_cents: 50000 },
+  plateaus: { year: 2026, scope: 'household', partial: true, low_frequency_max: 3,
+    regular_bands: [{ from: 0, step: 10 }, { from: 25, step: 25 }, { from: 100, step: 60 }], regular_bands_default: [{ from: 0, step: 10 }, { from: 25, step: 25 }, { from: 75, step: 45 }], excluded_organizations: { count: 1, total_cents: 50000 },
     summary: { total_givers: 2, low_frequency_givers: 1, total_upside_modest_annual_cents: 104000, total_upside_generous_annual_cents: 312000 },
     groups: [
       { key: 'rare', label: 'Rare givers', goal: 'Start giving', num_people: 1, upside_modest_annual_cents: 6000, upside_standard_annual_cents: 18000, upside_generous_annual_cents: 30000,
@@ -64,6 +65,7 @@ function env(role = 'finance', permissions = { finance: 'edit', giving: 'edit' }
       if (u.pathname.endsWith('staff-role-v1')) return Response.json({ role, permissions, username: 'tester' });
       calls.push({ path: u.pathname, query: Object.fromEntries(u.searchParams), method: req.method, body: req.method === 'POST' ? await req.json() : null });
       if (u.pathname.endsWith('giving-nudge-group-write-v1')) return Response.json({ ok: true });
+      if (u.pathname.endsWith('giving-nudge-bands-write-v1')) return Response.json({ ok: true });
       if (u.pathname.endsWith('giving-impact-write-v1')) return Response.json({ ok: true, statements: calls.at(-1).body.statements });
       const name = u.searchParams.get('report');
       return REPORTS[name] ? Response.json({ contract: 'connect.giving-reports.v1', report: name, ...REPORTS[name] }) : Response.json({ error: 'Unknown giving report' }, { status: 404 });
@@ -161,6 +163,23 @@ describe('Finance › Giving reports', () => {
     expect(await page(env(), 'plateaus', '&year=2026&regular_weekly=99999&regular_share=-5')).toContain('<strong>+$0</strong>');
   });
 
+  it('saves the weekly increases band by band, or puts the defaults back, and returns to the same report', async () => {
+    const e = env();
+    const post = (fields) => call(e, '/api/v1/giving-nudge-bands', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ year: '2026', scope: 'household', regular_weekly: '25', regular_share: '100', ...fields }) });
+    const saved = await post({ from_0: '0', step_0: '10', from_1: '25', step_1: '25', from_2: '100', step_2: '60', from_3: '', step_3: '' });
+    expect(saved.headers.get('Location')).toBe('/?section=giving-reports&page=plateaus&year=2026&scope=household&regular_weekly=25&regular_share=100&status=ok&msg=Weekly+increases+saved.');
+    expect(e.calls.find((c) => c.path.endsWith('giving-nudge-bands-write-v1')).body).toEqual({ bands: [{ from: 0, step: 10 }, { from: 25, step: 25 }, { from: 100, step: 60 }] });
+    const reset = await post({ op: 'reset' });
+    expect(reset.headers.get('Location')).toContain('Weekly+increases+put+back+to+the+defaults.');
+    expect(e.calls.filter((c) => c.path.endsWith('giving-nudge-bands-write-v1')).at(-1).body).toEqual({ reset: true });
+    expect((await post({ from_0: '0', step_0: '0' })).headers.get('Location')).toContain('status=error');
+    expect((await post({ from_0: 'x', step_0: '10' })).headers.get('Location')).toContain('status=error');
+    expect((await post({})).headers.get('Location')).toContain('Add+at+least+one+row.');
+    const cross = await call(e, '/api/v1/giving-nudge-bands', { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' }, body: new URLSearchParams({ from_0: '0', step_0: '10' }) });
+    expect(cross.headers.get('Location')).toContain('status=error');
+    expect(e.calls.filter((c) => c.path.endsWith('giving-nudge-bands-write-v1'))).toHaveLength(2);
+  });
+
   it('relays a move to another group to Connect and returns to the same report', async () => {
     const e = env();
     const res = await call(e, '/api/v1/giving-nudge-group', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: new URLSearchParams({ recipient_key: 'h1', group: 'regular', year: '2026', scope: 'household', fund_id: '4', low_frequency_max: '2' }) });
@@ -189,6 +208,12 @@ describe('Finance › Giving reports', () => {
     expect(plateaus).toContain('Irregular givers <small>Automate their giving</small>');
     expect(plateaus).toContain('<b>$400/mo</b><small>$4,800 a year, +$3,600</small>');
     expect(plateaus).toContain('<th>If automated</th>');
+    // Regular givers' weekly increases are editable, band by band, and say when they differ from the defaults.
+    expect(plateaus).toContain('Change the weekly increases (changed from the defaults)');
+    expect(plateaus).toContain('action="/api/v1/giving-nudge-bands"');
+    expect(plateaus).toContain('name="from_2" min="0" step="1" value="100"');
+    expect(plateaus).toContain('name="step_2" min="1" step="1" value="60"');
+    expect(plateaus).toContain('name="from_4" min="0" step="1" value=""');
     expect(plateaus).toContain('Not giving <small>Start giving</small>');
     // Planning estimate: the one regular household at the default $25 a week, everyone saying yes.
     expect(plateaus).toContain('<strong>+$1,300</strong>');
