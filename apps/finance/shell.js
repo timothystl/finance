@@ -52,7 +52,7 @@ import { fetchDaycareChurchBudgetPreview, fetchFinanceBoardPacket, fetchFinanceI
 import { ACCESS_STYLES, renderAccessPage } from './access-pages.js';
 import {
   GIVING_ANALYTICS_STYLES, givingPaceParams, renderConcentrationPage, renderGivingPacePage, renderPledgesPage, renderStatementsPage, renderTrendsPage,
-  renderWhatIfPage, renderYearOverYearPage,
+  renderWhatIfPage, renderCampaignPage, renderYearOverYearPage,
 } from './giving-analytics-pages.js';
 import { describeFormStatus, handleFinanceFormWrite, isSameOriginPost } from './form-post.js';
 import { HR_WRITERS, buildHrView, readHr } from './hr-service.js';
@@ -1576,6 +1576,7 @@ function renderSectionBody(ctx) {
         canEdit: canEditPledges(roleResult, councilPreview), namedHidden, status,
       });
       case 'what-if': return renderWhatIfPage({ result: totals, params: ctx.searchParams, keep });
+      case 'campaign': return renderCampaignPage({ result: totals, params: ctx.searchParams, keep });
       case 'statements': return renderStatementsPage({ result: asResult(ctx.givingAnalyticsPeople), councilPreview: namedHidden });
       default: return renderTrendsPage({ result: totals, keep, mdoBooks: ctx.givingMdoBooks, canEditFunds: canEditNudges, status });
     }

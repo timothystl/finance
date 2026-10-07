@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import worker from '../apps/finance/shell.js';
-import { projectWhatIf, whatIfBaseline } from '../apps/finance/giving-analytics-pages.js';
+import { projectCampaign, projectWhatIf, whatIfBaseline } from '../apps/finance/giving-analytics-pages.js';
 
 const TOTALS = {
   contract: 'connect.giving-analytics.v1', as_of: '2026-09-20', year: 2026, year_elapsed: 0.72,
@@ -307,6 +307,36 @@ describe('Giving analytics pages (Finance v3)', () => {
     // With no earlier year to measure, the fixed guesses are used and flagged.
     const empty = whatIfBaseline({ t12_households: 0, t12_cents: 0 });
     expect(empty).toMatchObject({ retention: 90, newRatio: 0.45, retentionMeasured: false, newRatioMeasured: false });
+  });
+
+  it('projects extra campaign giving from the household bands, with no names and nothing saved', async () => {
+    const likely = projectCampaign(TOTALS.households, new URLSearchParams('')).scenarios.find((s) => s.key === 'likely');
+    // Six bands, so two per tier: tiers use 40/55/70% taking part and 35/40/50% extra, 90% kept.
+    const expected = (cents, part, extra) => Math.round(cents * part * extra * 0.9);
+    const perYear = expected(2840000, 0.4, 0.35) + expected(4180000, 0.4, 0.35) + expected(15830000, 0.55, 0.4) + expected(21460000, 0.55, 0.4)
+      + expected(20620000, 0.7, 0.5) + expected(26910000, 0.7, 0.5);
+    expect(likely.perYearCents).toBe(perYear);
+    expect(likely.byYears).toEqual({ 3: perYear * 3, 4: perYear * 4, 5: perYear * 5 });
+    const all = projectCampaign(TOTALS.households, new URLSearchParams(''));
+    const [cautious, , stretch] = all.scenarios;
+    expect(cautious.byYears[3]).toBeLessThan(likely.byYears[3]);
+    expect(stretch.byYears[3]).toBeGreaterThan(likely.byYears[3]);
+    expect(projectCampaign(TOTALS.households, new URLSearchParams('part_1=500&extra_3=9999&fulfil=-5')).inputs).toMatchObject({ part_1: 100, extra_3: 300, fulfil: 0 });
+    expect(projectCampaign({ bands: [], t12_cents: 0 }, new URLSearchParams('')).scenarios[1].perYearCents).toBe(0);
+
+    const { env, calls } = makeEnv({ giving: 'anon' });
+    const html = await (await get(env, '&page=campaign&council=1')).text();
+    expect(html).toContain('Campaign capacity');
+    expect(html).toContain('Three views');
+    expect(html).toContain('Where the Likely figure comes from');
+    expect(html).toContain('How this is figured');
+    expect(html).toContain('name="part_3" value="70"');
+    expect(html).toContain('<input type="hidden" name="council" value="1">');
+    expect(html).not.toContain('Jordan Ellis');
+    expect(calls.every((c) => c.body === null && !c.path.endsWith('-people-v1'))).toBe(true);
+    const changed = await (await get(env, '&page=campaign&part_3=80&fulfil=95')).text();
+    expect(changed).toContain('name="part_3" value="80"');
+    expect(changed).toContain('name="fulfil" value="95"');
   });
 
   it('shows how the what-if is figured, with the values Connect’s records gave', async () => {
