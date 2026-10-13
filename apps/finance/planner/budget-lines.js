@@ -29,6 +29,7 @@ const kindOf = (label) => { const hit = KINDS.find(([, re]) => re.test(label)); 
 export function planBudgetLines(m, computed, tree, fallbackSalaryPath) {
   const all = leaves(tree);
   const salaryLeaves = all.filter((n) => SALARY_RE.test(n.label || '') && !BENEFIT_RE.test(n.label || ''));
+  const payLeaves = all.filter((n) => !kindOf(n.label || ''));
   const entries = m.countedEntries();
   const rows = [];
   const placed = new Set();
@@ -39,15 +40,16 @@ export function planBudgetLines(m, computed, tree, fallbackSalaryPath) {
   entries.forEach(({ w, i }) => {
     const code = String(w.accountCode || '').trim();
     if (!code) return;
-    const leaf = salaryLeaves.find((n) => n.path.indexOf(code) >= 0 || (n.label || '').indexOf(code) >= 0);
+    // A worker's own account code is enough to find their line; the line need not say "salary".
+    const leaf = payLeaves.find((n) => n.path.indexOf(code) >= 0 || (n.label || '').indexOf(code) >= 0);
     if (!leaf) return;
     byLeaf.set(leaf, (byLeaf.get(leaf) || 0) + computed[i].salaryCents);
     salaryPlaced += computed[i].salaryCents;
   });
   byLeaf.forEach((cents, leaf) => { rows.push({ category: leaf.path, label: leaf.label, kind: 'salary', cents }); placed.add(leaf.path); });
   const totalSalary = entries.reduce((t, { i }) => t + computed[i].salaryCents, 0);
-  // Pay nobody's code placed goes to the one remembered or only salary line, if there is one.
-  const target = fallbackSalaryPath || (salaryLeaves.length === 1 ? salaryLeaves[0].path : '');
+  // Pay nobody's code placed goes to the remembered salary line, else the first salary-named line (as legacy did).
+  const target = fallbackSalaryPath || (salaryLeaves[0] ? salaryLeaves[0].path : '');
   const unplacedSalary = totalSalary - salaryPlaced;
   if (unplacedSalary > 0 && target && !placed.has(target)) {
     const node = all.find((n) => n.path === target);
