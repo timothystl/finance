@@ -224,7 +224,6 @@ export const ACTIONS = {
   // ── Header buttons ──
   // Handled in main.js (it opens the printable Council report once pending changes are saved).
   printCouncil: { who: 'view', run() {} },
-  sendToBudget: { who: 'view', run() {
-    say('In Finance, enter ' + money(model().totals(model().computeAll()).totalCents) + ' on Planning → Budget builder for FY' + targetYear() + '.');
-  } },
+  // Handled in main.js (it writes the total into the budget and reports the outcome).
+  sendToBudget: { who: 'view', run() {} },
 };
