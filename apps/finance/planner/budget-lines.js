@@ -60,9 +60,19 @@ export function planBudgetLines(m, computed, tree, fallbackSalaryPath) {
   // Benefits: one budget line per kind, filled from the plan's breakdown.
   const breakdown = m.benefitBreakdown(computed);
   const unplaced = [];
-  breakdown.rows.forEach((r) => {
-    if (!r.cents) return;
-    const leaf = all.find((n) => !placed.has(n.path) && kindOf(n.label || '') === r.key);
+  // Several lines can look alike (a ministry's own "Payroll Taxes" beside the staff one), so the
+  // lines are chosen from the section most of the benefit lines sit in.
+  const parentOf = (n) => n.path.split(':').slice(0, -1).join(':');
+  const wanted = breakdown.rows.filter((r) => r.cents);
+  const counts = {};
+  wanted.forEach((r) => {
+    const first = all.find((n) => kindOf(n.label || '') === r.key);
+    if (first) counts[parentOf(first)] = (counts[parentOf(first)] || 0) + 1;
+  });
+  const home = Object.keys(counts).sort((x, y) => counts[y] - counts[x])[0];
+  wanted.forEach((r) => {
+    const open = all.filter((n) => !placed.has(n.path) && kindOf(n.label || '') === r.key);
+    const leaf = open.find((n) => parentOf(n) === home) || open[0];
     if (leaf) { rows.push({ category: leaf.path, label: leaf.label, kind: r.key, cents: r.cents }); placed.add(leaf.path); }
     else unplaced.push(r.key);
   });
