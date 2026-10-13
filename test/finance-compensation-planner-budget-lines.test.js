@@ -28,4 +28,19 @@ describe('planBudgetLines', () => {
     expect(by['E:6310 Health Insurance']).toBe(2000000);
     expect(plan.unplaced).toEqual(['fica']);
   });
+
+  it('finds a worker line by account code even when the line is not named salary, and falls back to the salary line', () => {
+    const t2 = [{ path: 'E', label: 'Expenses', classification: 'Expenses', children: [
+      leaf('E:6100 Pastor', '6100 Pastor'), leaf('E:6900 Salaries', '6900 Salaries'),
+    ] }];
+    const m2 = {
+      countedEntries: () => [{ w: { accountCode: '6100' }, i: 0 }, { w: {}, i: 1 }],
+      benefitBreakdown: () => ({ rows: [] }),
+    };
+    const plan = planBudgetLines(m2, computed, t2, '');
+    const by = Object.fromEntries(plan.rows.map((r) => [r.category, r.cents]));
+    expect(by['E:6100 Pastor']).toBe(9000000);
+    expect(by['E:6900 Salaries']).toBe(4000000);
+    expect(plan.unplaced).toEqual([]);
+  });
 });
