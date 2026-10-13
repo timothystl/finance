@@ -5,10 +5,11 @@
 // Compensation pages already use, tested against legacy), state and saving live in state.js, and
 // every change is an entry in actions.js. The page keeps legacy's feel: the whole view re-renders
 // on every change, typing keeps its focus and caret, and changes autosave after a short pause.
-import { S, model, load, scheduleSave, saveNow, savePending, flushOnExit, onSaveStatus } from './state.js';
+import { S, model, load, scheduleSave, saveNow, savePending, flushOnExit, onSaveStatus, baseYear, targetYear } from './state.js';
 import { ACTIONS } from './actions.js';
+import { planBudgetLines, KIND_LABELS } from './budget-lines.js';
 import { allowed } from './ui.js';
-import { sanitizeDecimal, sanitizeWholeDollar, esc } from './format.js';
+import { sanitizeDecimal, sanitizeWholeDollar, esc, money } from './format.js';
 import { headerHtml, emptyRosterHtml, renderPlan } from './view-plan.js';
 import { renderFairness, renderHealth, renderRates, renderCouncil } from './view-other.js';
 
@@ -92,11 +93,55 @@ function printCouncil(el) {
   saveNow().then(() => { if (win) win.location.href = href; else window.location.href = href; });
 }
 
+// Writes the plan into the target year's budget: each worker's pay on their own salary line and
+// pension, health, disability, FICA and mileage on theirs, the same save the Budget builder makes.
+// Says plainly what landed where and what it could not place.
+let sending = false;
+async function sendToBudget() {
+  if (sending) return;
+  const year = targetYear();
+  const m = model();
+  const plan = planBudgetLines(m, m.computeAll(), S.baseTree, S.targetCategory);
+  if (!plan.rows.length) {
+    S.toast = 'No salary or benefit lines found in the FY' + baseYear() + ' budget to send this to.';
+    render();
+    return;
+  }
+  sending = true;
+  S.toast = 'Sending to the FY' + year + ' budget…';
+  render();
+  try {
+    for (const r of plan.rows) {
+      const res = await fetch('/api/v1/connect-budget-plan-write', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          category: r.category, fiscal_year: year, classification: 'Expenses',
+          planned_amount: Math.round(r.cents / 100), notes: 'Sent from the Compensation Planner',
+        }),
+      });
+      let body = {};
+      try { body = await res.json(); } catch { body = {}; }
+      if (!res.ok || body.ok === false) throw new Error((r.label || r.category) + ': ' + (body.message || 'the budget did not accept it (' + res.status + ')'));
+    }
+    const lines = plan.rows.map((r) => r.label + ' ' + money(r.cents)).join('; ');
+    const left = plan.unplaced.length
+      ? ' No budget line was found for ' + plan.unplaced.map((k) => KIND_LABELS[k] || k).join(', ') + ', so those were left alone.'
+      : '';
+    S.toast = 'Sent to the FY' + year + ' budget: ' + lines + '.' + left + ' Open Planning → Budget builder to see it.';
+  } catch (err) {
+    S.toast = 'Not finished: ' + ((err && err.message) || 'the budget could not be reached') + '. Lines sent before this one are already saved.';
+  }
+  sending = false;
+  render();
+}
+
 function onClick(event) {
   const el = event.target.closest('[data-act]');
   if (!el || !root.contains(el)) return;
   event.preventDefault();
   if (el.dataset.act === 'printCouncil') { printCouncil(el); return; }
+  if (el.dataset.act === 'sendToBudget') { sendToBudget(); return; }
   run(el.dataset.act, el);
 }
 

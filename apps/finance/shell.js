@@ -2358,6 +2358,20 @@ export default {
 
     if (route.id === 'budget-plan-write-v1') {
       const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion') || '';
+      // The Compensation Planner's "Send to budget" posts JSON and wants the outcome as data.
+      if ((request.headers.get('Content-Type') || '').includes('application/json')) {
+        const json = (status, payload) => response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+        if (!isSameOriginPost(request, url)) return json(403, { ok: false, message: 'that request did not come from Timothy Finance' });
+        let body = null;
+        try { body = await request.json(); } catch { /* reported below */ }
+        if (!body || typeof body !== 'object') return json(400, { ok: false, message: 'the request could not be read' });
+        const sent = await postConnectFinanceBudgetWrite(env, accessJwt, [{
+          category: body.category || '', fiscal_year: body.fiscal_year || '', classification: body.classification || 'Expenses',
+          planned_amount: body.planned_amount ?? '', notes: body.notes || '',
+        }]);
+        if (sent.ok) return json(200, { ok: true });
+        return json(422, { ok: false, message: sent.message ? String(sent.message).slice(0, 200) : sent.reason === 'network_error' ? 'Connect could not be reached' : `Connect refused the request${sent.status ? ` (${sent.status})` : ''}` });
+      }
       let form;
       try {
         form = await request.formData();
