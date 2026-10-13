@@ -43,4 +43,22 @@ describe('planBudgetLines', () => {
     expect(by['E:6900 Salaries']).toBe(4000000);
     expect(plan.unplaced).toEqual([]);
   });
+
+  it('prefers the benefit lines in the same section over a look-alike line elsewhere', () => {
+    const t3 = [{ path: 'E', label: 'Expenses', classification: 'Expenses', children: [
+      leaf('E:MDO:57162 MDO Payroll Taxes', '57162 MDO Payroll Taxes'),
+      leaf('E:Salaries:58001 Lead Pastor', '58001 Lead Pastor'),
+      leaf('E:Benefits:59001 Payroll Taxes', '59001 Payroll Taxes'),
+      leaf('E:Benefits:59020 Pension', '59020 Pension'),
+      leaf('E:Benefits:59035 Health Insurance', '59035 Health Insurance'),
+    ] }];
+    const m3 = {
+      countedEntries: () => [{ w: { accountCode: '58001' }, i: 0 }],
+      benefitBreakdown: () => ({ rows: [{ key: 'pension', cents: 100 }, { key: 'health', cents: 200 }, { key: 'fica', cents: 300 }] }),
+    };
+    const plan = planBudgetLines(m3, [{ salaryCents: 5000 }], t3, '');
+    const cats = plan.rows.map((r) => r.category);
+    expect(cats).toContain('E:Benefits:59001 Payroll Taxes');
+    expect(cats).not.toContain('E:MDO:57162 MDO Payroll Taxes');
+  });
 });
