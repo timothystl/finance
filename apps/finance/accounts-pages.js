@@ -144,7 +144,7 @@ export function renderLayoutEditor(rows, layout, entryStatus, entryMessage, { ed
       <input type="hidden" name="path_${i}" value="${e(row.category_path)}"><input type="hidden" name="side_${i}" value="${isRevenue ? 'revenue' : 'expense'}">
       <input type="hidden" name="orig_cat_${i}" value="${assigned ? key : ''}"><input type="hidden" name="orig_name_${i}" value="${e(shown)}"><input type="hidden" name="orig_tag_${i}" value="${e(tag)}"><input type="hidden" name="orig_hide_${i}" value="${hidden ? '1' : ''}">
       <input type="checkbox" name="select_${i}" value="1" aria-label="Select ${e(shown)}">
-      <span class="coa-namebox"><input type="text" name="name_${i}" value="${e(shown)}" placeholder="${e(row.account_name)}" class="coa-name" aria-label="Display name for ${e(row.account_name)}" maxlength="120">${customName ? `<small class="coa-qb">QuickBooks: ${e(row.account_name)}</small>` : ''}</span>
+      <span class="coa-namebox"><input type="text" name="name_${i}" value="${e(shown)}" placeholder="${e(row.account_name)}" class="coa-name" aria-label="Display name for ${e(row.account_name)}" maxlength="120">${customName ? `<small class="coa-qb">QuickBooks: ${e(row.account_name)}</small>` : ''}${row.plan_only ? '<small class="coa-qb">Added on the Budget planner, not in QuickBooks yet</small>' : ''}</span>
       <select name="cat_${i}" class="coa-cat-select" aria-label="Category for ${e(shown)}">${catOptions(isRevenue, row, cats)}</select>
       <span class="coa-extra"><select name="tag_${i}" aria-label="Purpose for ${e(shown)}">${tagOptions(tag)}</select>
         <label><input type="checkbox" name="hide_${i}" value="1"${hidden ? ' checked' : ''}> Hide</label></span>

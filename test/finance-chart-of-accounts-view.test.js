@@ -247,6 +247,7 @@ describe('Chart of Accounts read from Finance\'s own database', () => {
     const report = await resolveAccountsReport(env, null, { fiscalYear: 2026 });
     expect(report).toMatchObject({ source: 'live', fiscalYear: 2026, availableFiscalYears: [2026, 2025] });
     expect(report.rows).toEqual([expect.objectContaining({ category_path: 'Income:Offerings', actual_cents: 5000000, budget_cents: 4800000 })]);
-    expect(calls).toEqual([]);
+    // The chart is read locally; only the Budget planner's lines (for the layout editor) may go on to Connect.
+    expect(calls.filter((u) => !u.includes('/finance-budget-builder-v1'))).toEqual([]);
   });
 });
