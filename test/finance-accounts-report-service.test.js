@@ -174,6 +174,23 @@ describe('resolveAccountsReport layoutRows (every account ever used, for the Bud
     expect(result.layoutRows[1]).toMatchObject({ actual_cents: 0, budget_cents: null });
   });
 
+  it('adds lines that exist only on the Budget planner, so they can be given a category', async () => {
+    const env = envFor();
+    const chart = env.CONNECT_SERVICE.fetch;
+    env.CONNECT_SERVICE = {
+      async fetch(request) {
+        if (!new URL(request.url).pathname.endsWith('finance-budget-builder-v1')) return chart(request);
+        return new Response(JSON.stringify({ contract: 'connect.finance-budget-builder.v1', targetYear: 2027, lines: [
+          { category: 'Income:46010 Market', classification: 'Income', name: '46010 Market' },
+          { category: 'Expenses:Snow Removal', classification: 'Expenses', name: 'Snow Removal' },
+        ] }), { status: 200 });
+      },
+    };
+    const result = await resolveAccountsReport(env, db, { fiscalYear: 2026 });
+    expect(result.layoutRows.map((r) => r.category_path)).toEqual(['Income:46010 Market', 'Income:48075 PPP', 'Income:48030 Grants', 'Expenses:Snow Removal']);
+    expect(result.layoutRows[3]).toMatchObject({ classification: 'Expenses', account_name: 'Snow Removal', actual_cents: 0, plan_only: true });
+  });
+
   it('skips a year that cannot be read instead of failing the page', async () => {
     const result = await resolveAccountsReport(envFor(2025), db, { fiscalYear: 2026 });
     expect(result.layoutRows.map((r) => r.category_path)).toEqual(['Income:46010 Market', 'Income:48030 Grants']);

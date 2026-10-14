@@ -1,5 +1,6 @@
 import { runBudgetedReadBatch } from './query-budget.js';
 import { fetchLiveFinanceChartOfAccounts } from './finance-chart-of-accounts-client.js';
+import { fetchBudgetBuilder } from './finance-budget-builder-client.js';
 import { CHART_REVENUE_CLASSIFICATIONS } from '../../contracts/validators/finance-chart-of-accounts-consumer.js';
 import {
   BOARD_EXPENSE_ORDER, BOARD_REVENUE_ORDER, accountDisplayName, boardCategoryFor, boardLabelFor, normalizeBoardLayout,
@@ -104,13 +105,13 @@ function liveAccountToRow(account) {
 
 // The Budget layout editor lists every account the church has ever used, not only the year on
 // screen, so an old line (one the year shown no longer has) can still be hidden. The other years'
-// accounts are added with no figures; the shown year's own rows win. A year that cannot be read
-// is skipped, leaving the list as complete as it could be made.
+// accounts are added with no figures; the shown year's own rows win, then lines that exist only on
+// the Budget planner. A year that cannot be read is skipped, leaving the list as complete as it
+// could be made.
 const LAYOUT_YEARS_LOOKED_BACK = 10;
 
 async function allYearsLayoutRows(env, rows, shownYear, availableYears) {
   const others = (availableYears || []).filter((y) => y !== shownYear).sort((a, b) => b - a).slice(0, LAYOUT_YEARS_LOOKED_BACK);
-  if (!others.length) return rows;
   const results = await Promise.all(others.map((y) => fetchLiveFinanceChartOfAccounts(env, y).catch(() => ({ ok: false }))));
   const seen = new Set(rows.map((r) => r.category_path));
   const extra = [];
@@ -120,6 +121,23 @@ async function allYearsLayoutRows(env, rows, shownYear, availableYears) {
       if (seen.has(account.categoryPath)) continue;
       seen.add(account.categoryPath);
       extra.push({ ...liveAccountToRow(account), actual_cents: 0, budget_cents: null });
+    }
+  }
+  // Lines added on the Budget planner that QuickBooks does not have yet: the plan for the year
+  // after the one shown (and next year), so a new line can be given its board category too.
+  const planYears = [...new Set([shownYear + 1, new Date().getUTCFullYear() + 1].filter(Number.isInteger))];
+  const plans = await Promise.all(planYears.map((y) => fetchBudgetBuilder(env, y).catch(() => ({ ok: false }))));
+  for (const plan of plans) {
+    if (!plan.ok) continue;
+    for (const line of plan.builder.lines) {
+      const path = String(line?.category || '').trim();
+      if (!path || seen.has(path) || !['Income', 'Expenses'].includes(line.classification)) continue;
+      seen.add(path);
+      const name = String(line.name || path.split(':').pop() || path).trim();
+      extra.push({
+        classification: line.classification, category_path: path, account_name: name, display_name: name,
+        actual_cents: 0, budget_cents: null, plan_only: true,
+      });
     }
   }
   return extra.length ? [...rows, ...extra] : rows;
