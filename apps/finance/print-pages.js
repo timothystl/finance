@@ -16,7 +16,7 @@ export const PRINT_BUTTON_JS = "document.getElementById('print-now').addEventLis
 export const PRINT_PAGE_CSP = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 
 export const PRINT_STYLES = `
-  body.print-body { background: #eef0ec; margin: 0; color: #172019; font: 11pt/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body.print-body { background: #eef0ec; margin: 0; color: #172019; font: 10pt/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
   .print-toolbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; max-width: 8.5in; margin: 1rem auto 0; padding: 0 .5rem; }
   .print-toolbar button { background: #1f6b45; color: #fff; border: 0; border-radius: .45rem; padding: .6rem 1rem; font-weight: 700; cursor: pointer; }
   .print-toolbar a { color: #1f6b45; }
@@ -31,13 +31,13 @@ export const PRINT_STYLES = `
   .print-newpage { break-before: page; page-break-before: always; }
   .print-cover-note { white-space: pre-wrap; border-left: 3px solid #1f6b45; padding: .4rem .8rem; margin: 1rem 0; background: #f4f7f4; }
   .print-foot { margin-top: 1.4rem; padding-top: .5rem; border-top: 1px solid #d9dfda; font-size: 8.5pt; color: #666; }
-  .print-doc table { width: 100%; border-collapse: collapse; margin: .6rem 0 1rem; font-size: 9.5pt; }
-  .print-doc th, .print-doc td { border-bottom: 1px solid #d9dfda; padding: .3rem .4rem; text-align: left; vertical-align: top; }
+  .print-doc table { width: 100%; border-collapse: collapse; margin: .5rem 0 .8rem; font-size: 8.5pt; }
+  .print-doc th, .print-doc td { border-bottom: 1px solid #d9dfda; padding: .2rem .35rem; text-align: left; vertical-align: top; }
   .print-doc thead { display: table-header-group; }
   .print-doc tr, .print-doc .card { break-inside: avoid; page-break-inside: avoid; }
   .print-doc .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
   .print-doc .card { border: 1px solid #d9dfda; border-radius: .4rem; padding: .5rem .6rem; }
-  .print-doc .card strong { display: block; font-size: 13pt; }
+  .print-doc .card strong { display: block; font-size: 12pt; }
   .print-doc .card small, .print-doc .card span { display: block; font-size: 8.5pt; color: #555; }
   .print-doc .section-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: .8rem; margin: 1rem 0 .4rem; border-bottom: 1px solid #d9dfda; padding-bottom: .25rem; }
   .print-doc .section-heading .eyebrow { text-transform: uppercase; letter-spacing: .05em; font-size: 8pt; color: #555; font-weight: 700; }
@@ -60,15 +60,15 @@ export const PRINT_STYLES = `
   .print-doc .bp-print-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin: .8rem 0; }
   .print-doc .bp-print-tile { border: 1px solid #d9dfda; border-radius: .4rem; padding: .5rem .6rem; }
   .print-doc .bp-print-tile small, .print-doc .bp-print-tile span { display: block; font-size: 8pt; color: #555; }
-  .print-doc .bp-print-tile strong { display: block; font-size: 13pt; }
-  .print-doc .bp-print-table { table-layout: auto; font-size: 8.5pt; }
-  .print-doc .bp-print-table th, .print-doc .bp-print-table td { padding: .25rem .3rem; }
+  .print-doc .bp-print-tile strong { display: block; font-size: 12pt; }
+  .print-doc .bp-print-table { table-layout: auto; font-size: 7.5pt; }
+  .print-doc .bp-print-table th, .print-doc .bp-print-table td { padding: .15rem .3rem; }
   .print-doc .bp-print-table th:first-child, .print-doc .bp-print-table td:first-child { width: 30%; overflow-wrap: anywhere; }
   .print-doc .bp-print-table th.n, .print-doc .bp-print-table td:not(:first-child) { text-align: right; white-space: nowrap; }
   .print-doc .bp-print-table th.n { white-space: normal; }
   .print-doc .bp-print-tiles { overflow-wrap: anywhere; }
   .print-doc { overflow-x: hidden; }
-  .print-doc .bp-print-group td { font-weight: 700; padding-top: .5rem; }
+  .print-doc .bp-print-group td { font-weight: 700; padding-top: .35rem; }
   .print-doc .bp-print-total td { font-weight: 700; border-top: 1px solid #999; }
   .print-doc .bp-print-total.is-net td { border-top: 2px solid #172019; }
   .print-doc .bp-up, .print-doc .bp-down-net { color: #8a2b1e; } .print-doc .bp-down, .print-doc .bp-up-net { color: #1f6b45; }
@@ -103,6 +103,10 @@ const PRINT_COUNCIL_FIT = `
   .print-doc .cr-mix div { font-size:9pt; }
   .print-doc .cr-navy-con p { font-size:9pt; }
   .print-doc .muted-line, .print-doc .lede { font-size:9pt; color:#555; }
+  .print-doc .bs-h { font-size:12pt; margin:.8rem 0 .2rem; }
+  .print-doc .bs-note, .print-doc .bs-warn p { font-size:8.5pt; }
+  .print-doc .bs-check { font-size:9.5pt; }
+  .print-doc .bs-meters li { font-size:9pt; padding:.25rem 0; }
 `;
 
 // Reports the board packet print can include. Each entry is rendered through the normal page route
