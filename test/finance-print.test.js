@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import worker from '../apps/finance/shell.js';
 import fs from 'node:fs';
-import { BOARD_PACKET_ITEMS, PRINT_STYLES, printHref } from '../apps/finance/print-pages.js';
+import { BOARD_PACKET_ITEMS, PRINT_STYLES, printHref, stripLiveSourceNotes } from '../apps/finance/print-pages.js';
 
 // Server-built print versions (Andrew, 2026-09-25): any page with print=1, and the board packet print.
 
@@ -142,6 +142,14 @@ describe('board packet content', () => {
       expect(fs.readFileSync(new URL('../apps/finance/balance-pages.js', import.meta.url), 'utf8')).toContain(`<section class="report keep-in-print" aria-label="${label}">`);
     }
   });
+  it('drops "live from Connect" notes from printed reports but keeps synthetic labels', () => {
+    expect(stripLiveSourceNotes('<span>Assets $1 · liabilities $2 · live from Connect</span>')).toBe('<span>Assets $1 · liabilities $2</span>');
+    expect(stripLiveSourceNotes('<div class="section-heading"><h2>X</h2><span class="badge">Live from Connect</span></div>')).toBe('<div class="section-heading"><h2>X</h2></div>');
+    expect(stripLiveSourceNotes('<span class="badge">FY2026 · reconciled · Live from Connect</span>')).toBe('<span class="badge">FY2026 · reconciled</span>');
+    expect(stripLiveSourceNotes('<span class="badge">Live from Connect · review-only</span>')).toBe('<span class="badge">review-only</span>');
+    expect(stripLiveSourceNotes('Budget $1 · synthetic fixture')).toBe('Budget $1 · synthetic fixture');
+  });
+
   it('pins text size so iPhone/iPad Safari does not enlarge the print type', () => {
     expect(PRINT_STYLES).toContain('-webkit-text-size-adjust: 100%');
   });

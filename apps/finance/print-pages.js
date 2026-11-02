@@ -166,6 +166,18 @@ export function renderPrintFragment({ eyebrow, title, bodyHtml }) {
   </article>`;
 }
 
+// Andrew, 2026-11-02: printed reports drop the "live from Connect" provenance notes -- on paper
+// every figure is the church's real record, and the note only crowds the page. Anything that is
+// NOT live keeps its label (synthetic, unavailable, review required), so a stand-in figure still
+// can never pass for a real one.
+export function stripLiveSourceNotes(html) {
+  return String(html)
+    .replace(/<span class="badge">\s*Live from Connect\s*<\/span>/g, '')
+    .replace(/\s*·\s*live from Connect\b/gi, '')
+    .replace(/\blive from Connect\s*·\s*/gi, '')
+    .replace(/<span class="badge">\s*<\/span>/g, '');
+}
+
 export function renderPrintDocument({ documentTitle, backHref, contentHtml, release, production, now = new Date() }) {
   return `<!doctype html>
 <html lang="en">
@@ -181,8 +193,8 @@ export function renderPrintDocument({ documentTitle, backHref, contentHtml, rele
   <script src="/print/print.js" defer></script>
   <main class="print-doc">
     <div class="print-masthead"><img src="/assets/finance-mark.png" alt=""><div><div class="org">Timothy Lutheran Church · Finance</div><div class="meta">Prepared ${escapeHtml(preparedLabel(now))}${production ? '' : ' · staging data'}</div></div></div>
-    ${contentHtml}
-    <div class="print-foot">Figures labeled live come from Connect's records; anything labeled synthetic or unavailable is not a real balance. Timothy Finance ${escapeHtml(release)}.</div>
+    ${stripLiveSourceNotes(contentHtml)}
+    <div class="print-foot">${/synthetic|unavailable/i.test(contentHtml) ? 'Anything labeled synthetic or unavailable is not a real balance. ' : ''}Timothy Finance ${escapeHtml(release)}.</div>
   </main>
 </body>
 </html>`;
