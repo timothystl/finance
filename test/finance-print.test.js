@@ -142,6 +142,15 @@ describe('board packet content', () => {
       expect(fs.readFileSync(new URL('../apps/finance/balance-pages.js', import.meta.url), 'utf8')).toContain(`<section class="report keep-in-print" aria-label="${label}">`);
     }
   });
+  it('pins text size so iPhone/iPad Safari does not enlarge the print type', () => {
+    expect(PRINT_STYLES).toContain('-webkit-text-size-adjust: 100%');
+  });
+
+  it('carries the Giving chart styles so giving bars and deciles print as charts', async () => {
+    const { html } = await get('/?section=property&page=capital&print=1');
+    expect(html).toContain('.ga-bar {');
+    expect(html).toMatch(/\.print-doc \.ga-fund, \.print-doc \.ga-tabs \{ display: none; \}/);
+  });
 });
 
 describe('board packet print', () => {
