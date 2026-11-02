@@ -9,6 +9,7 @@
 import { escapeHtml } from './render-helpers.js';
 import { BALANCE_STYLES } from './balance-pages.js';
 import { COUNCIL_REPORT_STYLES } from './council-report-pages.js';
+import { GIVING_ANALYTICS_STYLES } from './giving-analytics-pages.js';
 import { PROPERTY_CHART_STYLES } from './property-charts.js';
 
 // The print page's CSP forbids inline script, so the button's handler is served as its own file.
@@ -16,6 +17,9 @@ export const PRINT_BUTTON_JS = "document.getElementById('print-now').addEventLis
 export const PRINT_PAGE_CSP = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 
 export const PRINT_STYLES = `
+  /* iPhone/iPad Safari enlarges small text on its own (text autosizing), which undid the print
+     sizes below on Andrew's packets; pin text to the sizes given. */
+  html, body.print-body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body.print-body { background: #eef0ec; margin: 0; color: #172019; font: 10pt/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
   .print-toolbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; max-width: 8.5in; margin: 1rem auto 0; padding: 0 .5rem; }
   .print-toolbar button { background: #1f6b45; color: #fff; border: 0; border-radius: .45rem; padding: .6rem 1rem; font-weight: 700; cursor: pointer; }
@@ -67,7 +71,8 @@ export const PRINT_STYLES = `
   .print-doc .bp-print-table th.n, .print-doc .bp-print-table td:not(:first-child) { text-align: right; white-space: nowrap; }
   .print-doc .bp-print-table th.n { white-space: normal; }
   .print-doc .bp-print-tiles { overflow-wrap: anywhere; }
-  .print-doc { overflow-x: hidden; }
+  .print-doc { overflow-x: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-doc .ga-fund, .print-doc .ga-tabs { display: none; }
   .print-doc .bp-print-group td { font-weight: 700; padding-top: .35rem; }
   .print-doc .bp-print-total td { font-weight: 700; border-top: 1px solid #999; }
   .print-doc .bp-print-total.is-net td { border-top: 2px solid #172019; }
@@ -169,7 +174,7 @@ export function renderPrintDocument({ documentTitle, backHref, contentHtml, rele
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(documentTitle)} · Timothy Finance</title>
   <link rel="icon" href="/assets/finance-mark.png">
-  <style>${PRINT_STYLES}${BALANCE_STYLES}${COUNCIL_REPORT_STYLES}${PROPERTY_CHART_STYLES}${PRINT_COUNCIL_FIT}</style>
+  <style>${PRINT_STYLES}${BALANCE_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_ANALYTICS_STYLES}${PROPERTY_CHART_STYLES}${PRINT_COUNCIL_FIT}</style>
 </head>
 <body class="print-body">
   <div class="print-toolbar"><a href="${escapeHtml(backHref)}">← Back to Finance</a><button type="button" id="print-now">Print / Save as PDF</button></div>
