@@ -193,6 +193,7 @@ function k8Table(M, year, rows, over) {
     const actions = [
       row.preview && canEdit() && grade0 !== null && grade0 !== 'Graduated' ? btn('enroll', 'Enroll', { id }, 'tp-link') : '',
       btn('history', 'History', { id }, 'tp-link'),
+      !row.preview && canEdit() ? btn('openGrade', 'Change grade', { id }, 'tp-link') : '',
       !s.personId && canEdit() ? btn('openLink', 'Link', { id }, 'tp-link') : '',
       canEdit() ? btn('remove', 'Remove', { id }, 'tp-link tp-danger') : '',
     ].join(' ');
@@ -223,6 +224,7 @@ function lhsTable(M, year, rows, over) {
     const actions = [
       row.preview && canEdit() && grade0 !== null && grade0 !== 'Graduated' ? btn('enroll', 'Enroll', { id }, 'tp-link') : '',
       btn('history', 'History', { id }, 'tp-link'),
+      !row.preview && canEdit() ? btn('openGrade', 'Change grade', { id }, 'tp-link') : '',
       !s.personId && canEdit() ? btn('openLink', 'Link', { id }, 'tp-link') : '',
       canEdit() ? btn('remove', 'Remove', { id }, 'tp-link tp-danger') : '',
     ].join(' ');
@@ -351,7 +353,7 @@ export function renderSettings(M) {
     <div class="tp-settings">${fields.map((f) => `<div class="tp-setting"><label for="tp-cfg-${f.key}">${esc(f.label)}</label>
       <div class="tp-inline">${f.unit === '$' ? '$' : ''}<input id="tp-cfg-${f.key}" type="number" min="${f.kind === 'year' ? 2000 : 0}" ${f.max ? `max="${f.max}"` : f.kind === 'year' ? 'max="2100"' : ''} step="${f.step || 1}" value="${value(f)}"${disabled()}>${f.unit && f.unit !== '$' ? esc(f.unit) : ''}
       ${canEdit() ? btn('saveConfig', 'Save', { key: f.key, kind: f.kind }) : ''}</div>
-      ${f.key === 'base_school_year' ? `<small class="muted">The current school year is ${esc(M.yearLabel(0))}. Advance this once a year, at rollover; plans saved for the new year become that year’s records.</small>` : ''}</div>`).join('')}</div></section>`;
+      ${f.key === 'base_school_year' ? `<small class="muted">The current school year is ${esc(M.yearLabel(0))}. Advance this once a year, at rollover: every enrolled student moves up a grade, and plans saved for the new year become that year’s records.</small>` : ''}</div>`).join('')}</div></section>`;
 }
 
 // ── Panels: history, link a person, add a student ────────────────────────
@@ -388,6 +390,16 @@ export function renderPanel(M) {
     return `<section class="tp-panel" aria-label="Link a person"><div class="tp-panel-head"><h2>Link ${esc(s ? `${s.child} ${s.family}` : 'student')} to a person in Connect</h2>${close}</div>
       <p class="muted">Linking uses the person’s first and last name for this student’s record.</p>${personPicker('link')}
       ${btn('saveLink', 'Link', {}, 'tp-btn tp-primary')}</section>`;
+  }
+  if (P.kind === 'grade') {
+    const s = M.byId(P.id);
+    if (!s) return '';
+    const now = M.gradeAt(s, 0);
+    const choices = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+    return `<section class="tp-panel" aria-label="Change grade"><div class="tp-panel-head"><h2>Change grade: ${esc(`${s.child} ${s.family}`.trim())}</h2>${close}</div>
+      <p class="muted">Choose the grade ${esc(s.child || 'this student')} is in for the current school year, ${esc(M.yearLabel(0))}. Later years follow from it, one grade a year.</p>
+      <div class="tp-form-grid"><label>Grade in ${esc(M.yearLabel(0))}<select id="tp-grade-pick">${choices.map((g) => `<option value="${g}"${g === now ? ' selected' : ''}>${g === 'K' ? 'Kindergarten' : `Grade ${g}`}</option>`).join('')}</select></label></div>
+      ${btn('saveGrade', 'Save grade', {}, 'tp-btn tp-primary')}</section>`;
   }
   if (P.kind === 'add') {
     return `<section class="tp-panel" aria-label="Add a student"><div class="tp-panel-head"><h2>Add a student</h2>${close}</div>${personPicker('add')}

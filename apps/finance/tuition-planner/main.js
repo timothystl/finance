@@ -5,6 +5,7 @@
 // re-renders after each change, keeping focus and caret where they were; edits save shortly after.
 import { S, canEdit, call, load, onStateChange, saveNow, savePin, saveStudent, hasPendingSaves } from './state.js';
 import { renderPage, saveIndicator } from './view.js';
+import { schoolYearLabel } from './model.js';
 import {
   parseWorkbookAllSheets, detectMultiYearHistoryLayout, extractMultiYearHistory, extractHistoryRecords,
   extractFromRawWorkbook, buildImportRecords,
@@ -167,6 +168,12 @@ const ACTIONS = {
     }
   },
   openLink(d) { S.panel = { kind: 'link', id: +d.id }; S.people = []; const s = M().byId(+d.id); if (s && (s.family || s.child)) searchPeople(s.family || s.child); window.scrollTo(0, 0); },
+  openGrade(d) { S.panel = { kind: 'grade', id: +d.id }; window.scrollTo(0, 0); },
+  async saveGrade() {
+    const s = M().byId(S.panel.id); const grade = ($('tp-grade-pick') || {}).value;
+    if (!s || !grade) return;
+    try { await saveNow(`tuition-aid/students/${s.id}`, 'PATCH', { base_grade: grade }); S.panel = null; await reload(); } catch { /* shown */ }
+  },
   openAdd() { S.panel = { kind: 'add', pipeline: false }; S.people = []; window.scrollTo(0, 0); },
   // The past-year form picks a person without a panel open.
   pickPerson(d) { if (!S.panel) S.panel = { kind: 'past-add' }; S.panel.person = S.people.find((p) => p.id === +d.id) || null; S.people = []; },
@@ -250,6 +257,13 @@ const ACTIONS = {
     const raw = +$(`tp-cfg-${d.key}`).value;
     if (!Number.isFinite(raw) || raw < 0) { fail('Enter a number of zero or more.'); return; }
     const stored = d.kind === 'cents' ? Math.round(raw * 100) : raw;
+    if (d.key === 'base_school_year') {
+      const delta = Math.round(stored) - M().baseYear();
+      if (!delta) return;
+      const n = Math.abs(delta);
+      const what = `${n} grade${n === 1 ? '' : 's'}`;
+      if (!window.confirm(`Change the current school year to ${schoolYearLabel(Math.round(stored))}? Every student in the planner moves ${delta > 0 ? 'up' : 'back'} ${what}.`)) { render(); return; }
+    }
     try {
       await saveNow('tuition-aid/config', 'PATCH', { values: { [d.key]: stored } });
       M().config[d.key] = String(stored);
