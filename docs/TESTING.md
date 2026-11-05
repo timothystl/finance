@@ -21,7 +21,7 @@ successful migration, live authorization, production health, or business-data co
   handling, role verification and the role cache, navigation permission visibility.
 - Each report and page family: Church Report, Balance Sheet, Daycare, Commercial Property (the
   largest group), Budget and planning, Compensation (including the browser planner against a
-  harness), Payroll relay, Facilities, HR, Tuition Aid planner model, Giving relays, QuickBooks
+  harness), Payroll relay, Facilities, HR, Tuition Aid planner model and grade changes, Giving relays, QuickBooks
   (OAuth client, token service, budget merge, transactions).
 - Contract consumers: the validators in `contracts/validators/` fail closed on malformed or
   unreconciled data (`*-consumer.test.js`), and each `*-client.test.js` covers its transport.

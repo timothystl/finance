@@ -32,6 +32,18 @@ export function tapAttendsLhsFlag(v) {
   return v ? 1 : 0;
 }
 
+// The planner's grade ladder (tuition-planner/model.js GRADE_SEQ). 'Graduated' sits past 12th.
+const TAP_GRADE_SEQ = ['PK 3', 'PK 4', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'Graduated'];
+// The planner's default for base_school_year when none is saved (model.js CONFIG_FIELDS).
+const TAP_DEFAULT_BASE_SCHOOL_YEAR = 2026;
+// Moves a grade `years` up (or down, when negative) the ladder, stopping at PK 3 and Graduated.
+// A grade not on the ladder is left as it is.
+export function tapShiftGrade(grade, years) {
+  const i = TAP_GRADE_SEQ.indexOf(grade);
+  if (i === -1) return grade;
+  return TAP_GRADE_SEQ[Math.max(0, Math.min(TAP_GRADE_SEQ.length - 1, i + years))];
+}
+
 // Without a people table (Finance), the name and household the caller sent with the link stand.
 async function fillFromPerson(db, b) {
   if (!b.person_id || !db) return b;
@@ -159,8 +171,28 @@ export async function handleTuitionAidApi(req, env, url, method, seg, db, isFina
     const stmts = Object.entries(values).map(([k, v]) =>
       db.prepare(`INSERT INTO tuition_config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind(k, String(v))
     );
+    // A student's base_grade is their grade in the current school year (base_school_year), so
+    // moving that year moves every entered grade by the same number of years, in the same batch.
+    let gradesMoved = 0;
+    if (Object.prototype.hasOwnProperty.call(values, 'base_school_year')) {
+      const next = parseInt(values.base_school_year, 10);
+      const row = await db.prepare(`SELECT value FROM tuition_config WHERE key='base_school_year'`).first();
+      const prev = parseInt(row ? row.value : String(TAP_DEFAULT_BASE_SCHOOL_YEAR), 10);
+      const delta = Number.isFinite(next) && Number.isFinite(prev) ? next - prev : 0;
+      if (delta) {
+        const students = (await db.prepare(
+          `SELECT id, base_grade FROM tuition_students WHERE active=1 AND base_grade IS NOT NULL AND base_grade<>''`
+        ).all()).results || [];
+        for (const st of students) {
+          const moved = tapShiftGrade(st.base_grade, delta);
+          if (moved === st.base_grade) continue;
+          stmts.push(db.prepare(`UPDATE tuition_students SET base_grade=?, updated_at=datetime('now') WHERE id=?`).bind(moved, st.id));
+          gradesMoved += 1;
+        }
+      }
+    }
     if (stmts.length) await db.batch(stmts);
-    return json({ ok: true });
+    return json({ ok: true, grades_moved: gradesMoved });
   }
 
   // ── Per-year tuition rate override (global — one rate applies to every student that year) ──
