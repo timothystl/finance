@@ -1,13 +1,13 @@
 // Keeps Finance usable when Connect cannot answer the role check. Roles stay managed in Connect:
 // every successful check saves the answer here, and when Connect times out, drops the connection or
-// returns a 5xx, a page view may use the saved role for up to seven days. The person is identified
+// returns a 5xx, a page view may use the saved role for up to five minutes. The person is identified
 // by verifying the Cloudflare Access sign-in Finance itself receives. A refusal from Connect (401 or
 // 403) is never overridden, and saves always require a live answer (they call fetchVerifiedRole).
 import { fetchVerifiedRole, PAGE_ROLE_TIMEOUT_MS } from './connect-role-client.js';
 import { verifyAccessJwt } from './access-jwt.js';
 import { ensureFinanceOwnedSchema } from './finance-owned-schema.js';
 
-export const ROLE_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const ROLE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
 export function isTransientRoleFailure(result) {
   return !result.ok && (result.reason === 'network_error' || (result.reason === 'http_error' && result.status >= 500));
@@ -44,7 +44,7 @@ async function savedRole(db, identity, now) {
 }
 
 // For page views only. Returns fetchVerifiedRole's result, or a saved role marked source: 'saved'.
-export async function resolvePageRole(env, accessJwt, { now = Date.now(), fetchImpl } = {}) {
+export async function resolvePageRole(env, accessJwt, { now = Date.now(), fetchImpl, requireLive = false } = {}) {
   // Page rendering has a bounded dependency on Connect. Saves still use the stricter default
   // live verification path, while page views can fall back to the last verified role promptly.
   // A dropped connection or a 5xx while Connect restarts is retried once; a timeout is not.
@@ -53,6 +53,13 @@ export async function resolvePageRole(env, accessJwt, { now = Date.now(), fetchI
     await saveRole(env.FINANCE_DB, live);
     return live;
   }
+  if (live.reason === 'http_error' && [401, 403].includes(live.status) && env.FINANCE_DB) {
+    const identity = await verifyAccessJwt(accessJwt, { teamDomain: env.FINANCE_ACCESS_TEAM_DOMAIN, audience: env.FINANCE_ACCESS_AUD, now: () => now, ...(fetchImpl ? { fetchImpl } : {}) });
+    if (identity) {
+      try { await env.FINANCE_DB.prepare('DELETE FROM finance_role_cache WHERE identity=?').bind(identity).run(); } catch { /* The refusal still wins. */ }
+    }
+  }
+  if (requireLive) return live;
   if (!isTransientRoleFailure(live) || !env.FINANCE_DB || !env.FINANCE_ACCESS_TEAM_DOMAIN || !env.FINANCE_ACCESS_AUD) return live;
   const identity = await verifyAccessJwt(accessJwt, {
     teamDomain: env.FINANCE_ACCESS_TEAM_DOMAIN, audience: env.FINANCE_ACCESS_AUD,

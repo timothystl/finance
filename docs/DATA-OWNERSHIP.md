@@ -42,6 +42,24 @@ through versioned `giving-*` and `staff-role-v1` contracts and relays Giving wri
 them. Council Giving access is aggregate and anonymous only. Connect publishes the contracts that
 `contracts/validators/` parse.
 
+## Official giving imports in Finance
+
+Finance's Data & Imports → Giving imports is the working interface for official Breeze API
+imports, giving CSV uploads, reviewed application, resume and unmatched donor backfill. Connect's
+`giving-import-v1` contract independently verifies the active administrator and retains the official
+giving records. People and permissions stay in Connect; matching only fills unattributed gifts for
+an already-linked person. It never creates or edits people or roles.
+
+Previews validate complete fund allocations and cents. Application uses atomic ten-payment chunks,
+snapshot guards, a progress cursor and permanent before/after provenance. Missing Breeze gifts are
+never deleted automatically. Local corrections, refunds, voids and deposit-linked gifts are kept
+for explicit review through Finance's existing correction screens. A failed chunk is rolled back;
+prior completed chunks remain visible and can be resumed. The CSV upload parses the whole file,
+including quoted newlines, and groups split payments before creating stable payment IDs.
+
+This interface release does not migrate the giving database or remove Connect's accounting
+compatibility binding. Those remain explicit backend dependencies, rather than a second giving writer.
+
 ## Giving move in progress (started October 5, 2026)
 
 Andrew's goal is for Finance to own giving and for Connect's financial parts to be removed; Breeze stays
@@ -51,7 +69,7 @@ authoritative record until the writer is switched on purpose** (see Rules for da
 
 - **Step 1 (this change): a side-by-side copy.** Finance reads Breeze's giving list into
   `finance_breeze_gifts`, `finance_breeze_gift_funds` and `finance_breeze_sync_runs` (migration 0019) and
-  checks its monthly totals against Connect's to the cent on Data & Imports › Breeze giving copy (admin
+  checks its monthly totals against Connect's to the cent (not a certification of donor/fund parity) on Data & Imports › Breeze giving copy (admin
   only). The copy holds no names, only Breeze's person number, date, amount, method and funds. Nothing in
   Finance's reports reads it yet. Finance holds its own Breeze credentials as Worker secrets
   (`BREEZE_SUBDOMAIN`, `BREEZE_API_KEY`), never copied from Connect, never stored in a database or logged.

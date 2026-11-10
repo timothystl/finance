@@ -1,3 +1,4 @@
+import { renderGivingImports, handleGivingImport, IMPORT_SCRIPT } from './giving-import-pages.js';
 import { ACCOUNTING_JS, ACCOUNTING_CSS, ACCOUNTING_CSP, accountingViewer, renderAccountingWorkspace, relayAccountingWorkspace } from './accounting-workspace.js';
 import { handleTuitionApi, tuitionAidViewer } from './tuition-service.js';
 import { renderTuitionPage } from './tuition-pages.js';
@@ -1907,6 +1908,7 @@ function renderSectionBody(ctx) {
   if (section.id === 'packet') {
     return renderPacketPage({ churchReportLive, balanceSheetLive: balanceSheet, churchTrendLive, giving, givingSource, selection: ctx.finalSelection || null, coverTemplate: ctx.coverTemplate || '', canSaveTemplate: Boolean(ctx.canSaveTemplate), templateSaved: ctx.searchParams?.get('saved') === '1' });
   }
+  if (section.id === 'data' && page.id === 'giving-imports') return ctx.givingImportView;
   if (section.id === 'data' && page.id === 'breeze-giving') {
     return renderBreezeGivingPage({
       isAdmin: roleResult.ok && roleResult.role === 'admin', view: ctx.breezeGivingView,
@@ -2173,6 +2175,12 @@ export default {
         status: 405,
         headers: { 'Content-Type': 'application/json; charset=utf-8', Allow: route.methods.join(', ') },
       });
+    }
+
+    if (route.id === 'giving-import-script') return response(IMPORT_SCRIPT, { headers: { 'Content-Type': 'application/javascript' } });
+    if (route.id === 'giving-import-write') {
+      const result = await handleGivingImport(request, env, url);
+      return response(result.body, { status: result.status, headers: Object.fromEntries(result.headers) });
     }
 
     if (route.id === 'brand-asset') {
@@ -4066,6 +4074,7 @@ export default {
     // viewer's own headers, so each keeps its own permission check; a refused or failed piece is
     // named as left out rather than silently dropped.
     if (route.id === 'breeze-giving-sync-v1') {
+      if (!isSameOriginPost(request, url)) return response('This request did not come from Finance.', { status: 403 });
       const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion') || '';
       const roleResult = await fetchVerifiedRole(env, accessJwt);
       let form;
@@ -4200,7 +4209,7 @@ export default {
         const roleStarted = Date.now();
         // Page views may fall back to the role Connect last confirmed when Connect cannot answer
         // (role-cache.js); every save still verifies live.
-        const roleResult = await resolvePageRole(env, accessJwt);
+        const roleResult = await resolvePageRole(env, accessJwt, { requireLive: ['compensation', 'hr', 'payroll', 'accounts', 'packet', 'data'].includes(section.id) });
         const roleElapsedMs = Date.now() - roleStarted;
         // Production reads require the current Connect permission matrix. Only
         // unconfigured staging may show fixtures without a verified identity.
@@ -4880,6 +4889,7 @@ export default {
           ? await readSelection(env.FINANCE_DB, finalSelectionOwner) : null;
         const coverTemplate = finalSelection && section.id === 'packet' ? ((await readCoverTemplate(env.FINANCE_DB)) ?? DEFAULT_COVER_TEMPLATE) : '';
         const canSaveTemplate = Boolean(finalSelection) && roleResult.ok && (roleResult.role === 'admin' || roleResult.permissions?.finance === 'edit');
+        const givingImportView = section.id === 'data' && effectivePageId === 'giving-imports' ? await renderGivingImports(env, accessJwt, url.searchParams) : '';
         const breezeGivingYear = Number(url.searchParams.get('year'));
         const breezeGivingView = section.id === 'data' && effectivePageId === 'breeze-giving' && roleResult.ok && roleResult.role === 'admin'
           ? await loadBreezeGivingView(env, env.FINANCE_DB, accessJwt, Number.isInteger(breezeGivingYear) && breezeGivingYear >= 2000 && breezeGivingYear <= new Date().getUTCFullYear() ? breezeGivingYear : new Date().getUTCFullYear(), new Date(), Number(url.searchParams.get('detail')) || null) : null;
@@ -4895,7 +4905,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,
@@ -4943,6 +4953,8 @@ export default {
           shellResponse.headers.set('Content-Security-Policy', PRINT_PAGE_CSP);
         } else if (plannerPage && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', PLANNER_PAGE_CSP);
+        } else if (section.id === 'data' && effectivePageId === 'giving-imports' && !printMode) {
+          shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);
         } else if (section.id === 'planning' && effectivePageId === 'builder' && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);
         } else if (section.id === 'giving-reports' && effectivePageId === 'plateaus' && !printMode) {

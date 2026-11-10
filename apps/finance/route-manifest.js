@@ -358,6 +358,8 @@ const ROUTES = [
   // shell pages internally with the viewer's own headers, so it adds no data source of its own.
   { id: 'print-board-packet', paths: ['/print/board-packet'], methods: READ_METHODS, dataSource: 'none' },
   // Admin-only: reads Breeze's giving for a year into Finance's side-by-side copy (breeze-giving-service.js).
+  { id: 'giving-import-script', paths: ['/giving-import.js'], dataSource: 'none' },
+  { id: 'giving-import-write', paths: ['/api/v1/giving-import'], methods: WRITE_METHODS, dataSource: 'live-relay', writer: true },
   { id: 'breeze-giving-sync-v1', paths: ['/api/v1/breeze-giving-sync'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true },
   // One person's ordered list of report screens for the final report (packet-selection-service.js).
   { id: 'packet-selection-v1', paths: ['/api/v1/packet-selection'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true },

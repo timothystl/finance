@@ -72,22 +72,32 @@ describe('Finance role fallback', () => {
     expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).source).toBe('saved');
   });
 
+  it('requires a live answer for sensitive page requests even with a recent cached role', async () => {
+    const { env, state } = makeEnv();
+    const token = await jwt({});
+    await resolvePageRole(env, token, { fetchImpl: certsFetch });
+    state.mode = '503';
+    expect(await resolvePageRole(env, token, { fetchImpl: certsFetch, requireLive: true })).toMatchObject({ ok: false, status: 503 });
+  });
+
   it('never overrides a refusal from Connect', async () => {
     const { env, state } = makeEnv();
     const token = await jwt({});
     await resolvePageRole(env, token, { fetchImpl: certsFetch });
     state.mode = '403';
     expect(await resolvePageRole(env, token, { fetchImpl: certsFetch })).toMatchObject({ ok: false, status: 403 });
+    state.mode = '503';
+    expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).ok).toBe(false);
   });
 
-  it('ignores a saved role older than seven days', async () => {
+  it('ignores a saved role older than five minutes', async () => {
     const { env, db, state } = makeEnv();
     const token = await jwt({});
     await resolvePageRole(env, token, { fetchImpl: certsFetch });
     db.sqlite.prepare("UPDATE finance_role_cache SET verified_at = datetime('now', '-8 days')").run();
     state.mode = 'timeout';
     expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).ok).toBe(false);
-    expect(ROLE_CACHE_MAX_AGE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(ROLE_CACHE_MAX_AGE_MS).toBe(5 * 60 * 1000);
   });
 
   it('needs a valid sign-in for this Finance app before using a saved role', async () => {

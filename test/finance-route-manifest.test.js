@@ -17,6 +17,7 @@ import {
 // default. Anything else claiming non-GET/HEAD methods, a `writer` flag, or a live dataSource is
 // a regression.
 const WRITE_ROUTE_IDS = new Set([
+  'giving-import-write',
   'budget-plan-write-v1', 'compensation-plan-write-v1', 'payroll-hours-save-v1', 'payroll-period-approve-v1',
   'payroll-staff-save-v1', 'payroll-staff-deactivate-v1', 'payroll-email-v1',
   'budget-generate-v1', 'budget-generate-all-v1', 'budget-commit-v1', 'budget-plan-remove-v1',
@@ -141,7 +142,7 @@ describe('Finance staging route manifest', () => {
       '/api/v1/property-reserve-disbursement-entry', '/api/v1/property-distribution-entry',
       '/api/v1/property-capital-ledger-entry',
       '/api/v1/compensation-raise-plan-save', '/api/v1/compensation-council-draft-save', '/api/v1/compensation-council-overlay-save',
-      '/print/board-packet', '/api/v1/breeze-giving-sync', '/api/v1/packet-selection', '/print/board-packet/cover',
+      '/print/board-packet', '/giving-import.js', '/api/v1/giving-import', '/api/v1/breeze-giving-sync', '/api/v1/packet-selection', '/print/board-packet/cover',
       '/api/v1/qb/connect', '/api/v1/qb/callback', '/api/v1/qb/disconnect', '/api/v1/qb/sync', '/api/v1/qb/sync-years', '/api/v1/qb/restore',
       '/accounting', '/accounting/app.js', '/accounting/app.css', '/api/v1/accounting-workspace',
       '/tuition-planner/app.js', '/api/v1/tuition', '/tuition-aid',
