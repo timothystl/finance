@@ -1,3 +1,4 @@
+import { normalizeGift } from '../../src/giving-import-format.js';
 import { ensureFinanceOwnedSchema } from './finance-owned-schema.js';
 import { BreezeError, makeBreezeClient } from './breeze-client.js';
 
@@ -5,10 +6,9 @@ import { BreezeError, makeBreezeClient } from './breeze-client.js';
 // monthly totals can be checked against Connect's before Finance takes giving over. Connect stays
 // the authoritative record. The copy keeps no names. One year is read a month at a time (Breeze
 // caps a single answer, and a capped answer would silently drop gifts), and within each month the
-// copy is made to match Breeze exactly: gifts Breeze still lists are added or corrected, and gifts
-// Breeze no longer lists (deleted there) are removed.
+// copy refreshes gifts Breeze still lists. Missing gifts are retained for review; an incomplete
+// provider response must never be treated as proof of deletion. Each month is saved atomically.
 const MONTH_LIMIT = 10000;
-const BATCH_SIZE = 90;
 
 const pad = (n) => String(n).padStart(2, '0');
 export function monthRange(year, month) {
@@ -24,39 +24,19 @@ function toCents(value) {
 
 // One Breeze giving/list record -> a gift, or null when it has no usable id, date or amount.
 export function normalizeBreezeGift(record) {
-  if (!record || typeof record !== 'object') return null;
-  const paymentId = String(record.id ?? '').trim();
-  const paidOn = String(record.paid_on || record.date || '').slice(0, 10);
-  const amountCents = toCents(record.amount);
-  if (!paymentId || !/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || amountCents === null) return null;
-  const rawFunds = Array.isArray(record.funds) ? record.funds
-    : (record.fund && typeof record.fund === 'object' ? [record.fund]
-      : (record.fund_id ? [{ fund_id: record.fund_id, name: record.fund_name || '' }] : []));
-  let funds = rawFunds.map((f) => ({
-    fundRef: String(f.fund_id ?? f.id ?? '').slice(0, 40),
-    fundName: String(f.name || f.fund_name || '').slice(0, 120),
-    amountCents: toCents(f.amount),
-  }));
-  if (funds.length === 0) funds = [{ fundRef: '', fundName: '', amountCents }];
-  if (funds.length === 1 || funds.every((f) => f.amountCents === null)) {
-    funds = funds.map((f, i) => ({ ...f, amountCents: i === 0 ? amountCents : 0 }));
-  } else {
-    funds = funds.map((f) => ({ ...f, amountCents: f.amountCents ?? 0 }));
-  }
-  return {
-    paymentId, paidOn, amountCents,
-    personRef: String(record.person_id ?? '').slice(0, 40),
-    method: String(record.method || '').slice(0, 40),
-    feeCents: toCents(record.fee),
-    funds,
-  };
+  try {
+    const gift = normalizeGift(record);
+    return { paymentId: gift.id, paidOn: gift.date, amountCents: gift.cents, personRef: gift.personRef,
+      method: gift.method, feeCents: toCents(record.fee),
+      funds: gift.funds.map(f => ({ fundRef: f.ref, fundName: f.name, amountCents: f.cents })) };
+  } catch { return null; }
 }
 
 async function runBatches(db, statements) {
-  for (let i = 0; i < statements.length; i += BATCH_SIZE) await db.batch(statements.slice(i, i + BATCH_SIZE));
+  if (statements.length) await db.batch(statements); // One month is atomic, including all its splits.
 }
 
-// Makes one month of the copy match Breeze's answer for that month.
+// Refresh one month atomically, retaining absent records for deliberate review.
 async function syncMonth(db, gifts, { start, end }, syncedAt) {
   const existingRows = (await db.prepare('SELECT payment_id, paid_on, amount_cents FROM finance_breeze_gifts WHERE paid_on BETWEEN ? AND ?').bind(start, end).all()).results || [];
   const existing = new Map(existingRows.map((r) => [r.payment_id, r]));
@@ -80,12 +60,8 @@ async function syncMonth(db, gifts, { start, end }, syncedAt) {
     }
   }
   const gone = existingRows.filter((r) => !seen.has(r.payment_id));
-  for (const r of gone) {
-    statements.push(db.prepare('DELETE FROM finance_breeze_gift_funds WHERE payment_id = ?').bind(r.payment_id));
-    statements.push(db.prepare('DELETE FROM finance_breeze_gifts WHERE payment_id = ?').bind(r.payment_id));
-  }
   await runBatches(db, statements);
-  return { added, updated, removed: gone.length };
+  return { added, updated, removed: 0, missing: gone.length };
 }
 
 // Reads one year (January to the end of this month, if it is the current year) and records the run.
@@ -121,8 +97,10 @@ export async function syncBreezeGivingYear(env, db, { year, runBy = '', now = ne
     for (const record of list) {
       const gift = normalizeBreezeGift(record);
       if (!gift || gift.paidOn < range.start || gift.paidOn > range.end) { skipped += 1; continue; }
+      if (byId.has(gift.paymentId)) { skipped += 1; continue; }
       byId.set(gift.paymentId, gift);
     }
+    if (skipped) { failure = `${range.start.slice(0, 7)} contains invalid or repeated records; that month was not changed.`; break; }
     gifts.push(...byId.values());
     if (skipped) warnings.push(`${range.start.slice(0, 7)}: ${skipped} Breeze record${skipped === 1 ? '' : 's'} left out (no date, amount or id, or outside the month).`);
     // An empty answer for a month that already has gifts copied is more likely a Breeze hiccup than
@@ -132,7 +110,10 @@ export async function syncBreezeGivingYear(env, db, { year, runBy = '', now = ne
       if (have && have.n > 0) { warnings.push(`${range.start.slice(0, 7)}: Breeze listed no gifts, but ${have.n} are already copied, so that month was left unchanged.`); continue; }
     }
     total.fetched += gifts.length;
-    const changes = await syncMonth(db, gifts, range, startedAt);
+    let changes;
+    try { changes = await syncMonth(db, gifts, range, startedAt); }
+    catch { failure = `${range.start.slice(0, 7)} could not be saved; that month was left unchanged.`; break; }
+    if (changes.missing) warnings.push(`${range.start.slice(0, 7)}: ${changes.missing} previously copied gifts were absent and kept for review; absence is not proof of deletion.`);
     total.added += changes.added; total.updated += changes.updated; total.removed += changes.removed;
   }
 
@@ -193,24 +174,24 @@ export async function readCopyLines(db, year, month) {
   const { start, end } = monthRange(year, month);
   if (!db || !(await ensureFinanceOwnedSchema(db, 'breezeGiving'))) return [];
   try {
-    return (await db.prepare(`SELECT g.payment_id, g.person_ref, g.paid_on, g.method, f.fund_name, f.amount_cents
+    return (await db.prepare(`SELECT g.payment_id, g.person_ref, g.paid_on, g.method, f.fund_ref, f.fund_name, f.amount_cents
       FROM finance_breeze_gifts g JOIN finance_breeze_gift_funds f ON f.payment_id = g.payment_id
       WHERE g.paid_on BETWEEN ? AND ? ORDER BY g.paid_on, g.payment_id`).bind(start, end).all()).results || [];
   } catch { return []; }
 }
 
 export function diffGiftLines({ copyLines, connectRows }) {
-  const key = (day, cents) => `${day}|${cents}`;
+  const key = (payment, person, fund, day, cents) => JSON.stringify([String(payment || '').replace(/-\d+$/, ''), String(person || ''), String(fund || ''), day, cents]);
   const connect = new Map();
   for (const r of connectRows) {
-    const k = key(String(r.gift_date || '').slice(0, 10), r.amount);
+    const k = r.breeze_id && r.person_breeze_id && r.fund_breeze_id ? key(r.breeze_id, r.person_breeze_id, r.fund_breeze_id, String(r.gift_date || '').slice(0, 10), r.amount) : `unresolved:${connect.size}`;
     (connect.get(k) || connect.set(k, []).get(k)).push(r);
   }
   const onlyInBreeze = [];
   const possibleDuplicates = new Set();
   const seenGift = new Map();
   for (const line of copyLines) {
-    const k = key(line.paid_on, line.amount_cents);
+    const k = key(line.payment_id, line.person_ref, line.fund_ref, line.paid_on, line.amount_cents);
     const bucket = connect.get(k);
     if (bucket && bucket.length) bucket.pop();
     else onlyInBreeze.push(line);

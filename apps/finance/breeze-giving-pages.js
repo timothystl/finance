@@ -57,7 +57,7 @@ export function renderBreezeGivingPage({ isAdmin, view, status = null, message =
   const kpis = renderKpiCards([
     { label: `Finance’s copy, ${year}`, value: formatCents(r.financeCents), hint: `${r.gifts.toLocaleString('en-US')} gifts` },
     { label: `Connect, ${year}`, value: r.connectCents === null ? 'Unavailable' : formatCents(r.connectCents), hint: connectOk ? 'All giving, from Connect' : 'Connect’s totals could not be read' },
-    { label: 'Difference', value: r.differenceCents === null ? '—' : formatSignedCents(r.differenceCents), hint: r.allMatch ? 'Every month matches to the cent' : 'Finance’s copy minus Connect' },
+    { label: 'Difference', value: r.differenceCents === null ? '—' : formatSignedCents(r.differenceCents), hint: r.allMatch ? 'Monthly totals match; this does not verify individual gifts' : 'Finance’s copy minus Connect' },
   ]);
   const rows = r.months.map((m) => `<tr><td>${MONTHS[m.month - 1]}</td><td class="num">${m.gifts.toLocaleString('en-US')}</td><td class="num">${formatCents(m.financeCents)}</td><td class="num">${m.connectCents === null ? '—' : formatCents(m.connectCents)}</td><td class="num">${m.differenceCents === null ? '—' : formatSignedCents(m.differenceCents)}</td><td>${m.matches ? '✓ matches' : (m.connectCents === null ? '' : `differs · <a href="/?section=data&amp;page=breeze-giving&amp;year=${year}&amp;detail=${m.month}">show the gifts</a>`)}</td></tr>`).join('');
   const table = renderTable({ head: ['Month', 'Gifts', 'Finance’s copy', 'Connect', 'Difference', ''], rows });
@@ -89,7 +89,7 @@ function renderDetail(detail, year) {
   const aTable = a.length ? renderTable({ head: ['Day', 'Amount', 'Method', 'Fund', 'Breeze payment', ''], rows: a.map((g) => `<tr><td>${e(g.day)}</td><td class="num">${cents(g.cents)}</td><td>${e(g.method)}</td><td>${e(g.fund)}</td><td>${e(g.paymentId)}</td><td>${g.possibleDuplicate ? 'same giver, day and amount as another gift' : ''}</td></tr>`).join('') }) : '<p>None: every gift in Finance’s copy is also in Connect.</p>';
   const bTable = b.length ? renderTable({ head: ['Day', 'Amount', 'Method', 'Fund', 'Processor'], rows: b.map((g) => `<tr><td>${e(g.day)}</td><td class="num">${cents(g.cents)}</td><td>${e(g.method)}</td><td>${e(g.fund)}</td><td>${e(g.processor)}</td></tr>`).join('') }) : '<p>None: every gift in Connect is also in Finance’s copy.</p>';
   return `<h3>${e(title)}</h3>
-    <p><small>Gifts are matched by day and amount. A gift that appears only on one side is listed here. No names are shown; look the gift up by its day and amount in Breeze or in Connect’s Giving transactions.</small></p>
+    <p><small>Gifts are matched by Breeze payment, donor and fund numbers, date and amount. Missing references remain unresolved. A gift that appears only on one side is listed here. No names are shown. Review differences in Finance’s Giving transactions.</small></p>
     ${detail.truncated ? '<p class="status status-pending">Connect has more gifts this month than one list holds, so this comparison may be incomplete.</p>' : ''}
     <h4>In Breeze (Finance’s copy) but not in Connect</h4>${aTable}
     <h4>In Connect but not in Breeze</h4>${bTable}`;

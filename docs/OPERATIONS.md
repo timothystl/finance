@@ -120,3 +120,22 @@ Everyone), covers only the paths served by the `brand-asset` route in `apps/fina
 `/assets/finance-icon-512.png`, `/assets/finance-icon-maskable-512.png`). These serve only the logo; keep the
 list in step with that route. Check: an unauthenticated request for `/apple-touch-icon.png` returns the
 image, and one for `/` still redirects to sign-in.
+
+## Giving import operation
+
+Open Data & Imports → Giving imports. Preview up to 32 days of Breeze contributions, or upload a
+Breeze giving CSV/TSV up to 1 MB with Payment ID, Date, Amount and numbered Fund(s). Review the
+payments before applying. Keep the page open while it applies; saved previews show progress and
+can resume after an interruption. Only the administrator who created a preview can apply it.
+
+Official imports use Connect's existing Breeze credentials via the authenticated contract; Finance's
+own Breeze credentials serve only the optional comparison copy. No secrets need to be copied.
+The Connect release must precede the Finance release. Migration 0065 documents the import tables;
+the authenticated import service also creates them on first use. No existing gifts are migrated on deploy.
+
+Missing gifts require deliberate review in Finance's Transactions page; neither import automatically
+deletes them. Locally corrected or deposit-linked gifts remain unchanged. Link missing Breeze person
+numbers in Connect, then use Match gifts in Finance to fill only unattributed imported gifts.
+Comparison matches require external payment, person and fund references, date and cents. Monthly
+agreement alone is not migration acceptance. Permission fallback lasts at most five minutes; sensitive
+HR, payroll, compensation, accounts, packets and import pages require a live role verification.

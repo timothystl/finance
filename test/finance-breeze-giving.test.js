@@ -77,12 +77,12 @@ describe('Breeze gift normalization', () => {
     expect(normalizeBreezeGift({ id: 1, paid_on: '2026-03-01' })).toBeNull();
     expect(normalizeBreezeGift({ paid_on: '2026-03-01', amount: '5' })).toBeNull();
     expect(normalizeBreezeGift({ id: 2, date: 'soon', amount: '5' })).toBeNull();
-    expect(normalizeBreezeGift({ id: 3, paid_on: '2026-03-01', amount: '10', funds: [{ fund_id: 1 }, { fund_id: 2 }] }).funds.map((f) => f.amountCents)).toEqual([1000, 0]);
+    expect(normalizeBreezeGift({ id: 3, paid_on: '2026-03-01', amount: '10', funds: [{ fund_id: 1 }, { fund_id: 2 }] })).toBeNull();
   });
 });
 
 describe('Breeze giving copy', () => {
-  it('copies a year a month at a time, then matches Breeze after gifts are corrected and deleted there', async () => {
+  it('copies a year a month at a time, then updates gifts without deleting records absent from a later response', async () => {
     const db = sqliteDb();
     const first = fakeBreeze({
       '2026-01': [rec(1, '2026-01-04', '100.00'), rec(2, '2026-01-11', '50.25')],
@@ -98,9 +98,9 @@ describe('Breeze giving copy', () => {
     // Breeze later corrects gift 1 and deletes gift 2; running again makes the copy match.
     const second = fakeBreeze({ '2026-01': [rec(1, '2026-01-04', '120.00')], '2026-02': [rec(3, '2026-02-01', '75.00')] });
     const run2 = await syncBreezeGivingYear(KEYS, db, { year: 2026, now: NOW, fetchImpl: second.fetchImpl });
-    expect(run2).toMatchObject({ ok: true, added: 0, updated: 1, removed: 1 });
-    expect((await readCopyMonthly(db, 2026)).cents.slice(0, 2)).toEqual([12000, 7500]);
-    expect(db.sqlite.prepare('SELECT COUNT(*) AS n FROM finance_breeze_gift_funds').get().n).toBe(2);
+    expect(run2).toMatchObject({ ok: true, added: 0, updated: 1, removed: 0 });
+    expect((await readCopyMonthly(db, 2026)).cents.slice(0, 2)).toEqual([17025, 7500]);
+    expect(db.sqlite.prepare('SELECT COUNT(*) AS n FROM finance_breeze_gift_funds').get().n).toBe(3);
     expect(db.sqlite.prepare('SELECT COUNT(*) AS n FROM finance_breeze_sync_runs').get().n).toBe(2);
   });
 
@@ -137,7 +137,7 @@ describe('Breeze giving copy', () => {
 });
 
 describe('which gifts differ', () => {
-  it('matches gift lines by day and amount, as often as each appears, and leaves only the real differences', async () => {
+  it('matches payment, donor, fund, date and amount, leaving genuine differences', async () => {
     const db = sqliteDb();
     const april = [
       rec(1, '2026-04-05', '100.00'), rec(2, '2026-04-05', '100.00'), rec(3, '2026-04-05', '100.00'),
@@ -148,9 +148,9 @@ describe('which gifts differ', () => {
     const lines = await readCopyLines(db, 2026, 4);
     expect(lines).toHaveLength(4);
     const connectRows = [
-      { gift_date: '2026-04-05', amount: 10000, method: 'check', fund_name: 'General Fund' },
-      { gift_date: '2026-04-05', amount: 10000, method: 'check', fund_name: 'General Fund' },
-      { gift_date: '2026-04-12', amount: 5500, method: 'check', fund_name: 'General Fund' },
+      { breeze_id: '1', person_breeze_id: 'p1', fund_breeze_id: '1', gift_date: '2026-04-05', amount: 10000, method: 'check', fund_name: 'General Fund' },
+      { breeze_id: '2', person_breeze_id: 'p1', fund_breeze_id: '1', gift_date: '2026-04-05', amount: 10000, method: 'check', fund_name: 'General Fund' },
+      { breeze_id: '4', person_breeze_id: 'p4', fund_breeze_id: '1', gift_date: '2026-04-12', amount: 5500, method: 'check', fund_name: 'General Fund' },
       { gift_date: '2026-04-20', amount: 2500, method: 'card', fund_name: 'Music', processor: 'stax' },
     ];
     const diff = diffGiftLines({ copyLines: lines, connectRows });
@@ -189,7 +189,7 @@ describe('Breeze giving page and sync route', () => {
       },
     };
   }
-  const headers = { 'Cf-Access-Jwt-Assertion': 'signed.jwt' };
+  const headers = { 'Cf-Access-Jwt-Assertion': 'signed.jwt', Origin: 'https://finance.test' };
   const get = async (path, env) => { const res = await worker.fetch(new Request(`https://finance.test${path}`, { headers }), env); return { status: res.status, html: await res.text() }; };
 
   it('shows an admin the connection steps when Breeze is not connected, and Connect’s totals', async () => {
