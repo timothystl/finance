@@ -40,8 +40,8 @@ Worker secrets the code reads, by name: `FINANCE_CONTRACT_API_KEY` (calls to Con
 2. Pages are server-rendered with a strict content policy (no inline script). Only the Budget
    planner, the Compensation planner, the Tuition planner and the `/accounting` workspace load script from this Worker.
 3. The viewer's role comes from Connect's `staff-role-v1` contract, which verifies the Access token.
-   Finance applies its own section permissions (`roleCanAccessSection`). The last role Connect
-   confirmed is cached (`finance_role_cache`) so views survive a Connect outage; writes never use it.
+   Finance applies its own section permissions (`roleCanAccessSection`). Pages and writes require
+   current authorization. Historical `finance_role_cache` rows are never used for access decisions.
 4. Reads: with `FINANCE_LOCAL_CONTRACT_READS=1`, `local-contract-reads.js` answers the accounting
    contracts (church report, balance sheet, budget, daycare, property, compensation, chart of
    accounts and others) from `FINANCE_DB`. A failed local read falls through to Connect; a local

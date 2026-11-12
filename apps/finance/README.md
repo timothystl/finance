@@ -49,8 +49,8 @@ A separate familiar accounting layout is served at `/accounting` (see ARCHITECTU
 - Some overview cards and the preview endpoints (`/api/v1/summary`, `/api/v1/connect-giving-preview`)
   can fall back to a labeled synthetic fixture when a live read fails. The production database holds
   no synthetic rows, so such a card shows "unavailable". Fixtures (`fixtures/`) are for local testing only.
-- Role checks need Connect. If Connect is unreachable, page views use a role cached for up to seven
-  days (with a notice); saves always require a live check and are refused otherwise.
+- Role checks need Connect. If Connect is unreachable, protected pages and saves are refused.
+  A historical cached role cannot restore revoked permissions during an outage.
 - A stored QuickBooks token or past sync does not prove the connection works today. Confirm it on
   the QuickBooks page (an admin connects and syncs there).
 - The off-by-default native writers (`budget-plan-save-v1`, the property `*-entry-v1` routes,
