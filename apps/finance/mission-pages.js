@@ -11,7 +11,7 @@ const METHOD_BADGES = {
   partial: ['warn', 'Partly split'], needs: ['warn', 'Needs a split'],
 };
 const badge = (kind, text) => `<span class="ma-badge ${kind}">${kind === 'warn' ? '<span class="ma-dot" style="background:#B07A00"></span>' : ''}${e(text)}</span>`;
-const RETURN_PAGES = { line: 'mission', building: 'mission', staff: 'staff-time', 'staff-add': 'staff-time', 'staff-remove': 'staff-time' };
+const RETURN_PAGES = { lines: 'mission', line: 'mission', building: 'mission', staff: 'staff-time', 'staff-add': 'staff-time', 'staff-remove': 'staff-time', 'staff-import': 'staff-time', 'staff-benefits': 'staff-time' };
 const hiddenYear = (builder, data, action) => `<input type="hidden" name="return_page" value="${RETURN_PAGES[action]}"><input type="hidden" name="return_target" value="${builder.targetYear}"><input type="hidden" name="target" value="${builder.targetYear}"><input type="hidden" name="base" value="${builder.baseYear}"><input type="hidden" name="revision" value="${data.revision}"><input type="hidden" name="action" value="${action}">`;
 const pctValue = (bp) => (bp ? String(bp / 100) : '');
 const hoursText = (h) => (h == null ? '' : String(h / 100));
@@ -70,7 +70,15 @@ export function renderMissionPage({ builder, data, prior = null, layout = null, 
   };
   const programRows = model.rows.filter((r) => !r.isSource);
   const sections = buildBoardSections(programRows, lay, (r) => ({ path: r.line.category, name: r.line.name, isRevenue: false })).expense;
-  const cell = (r, i) => {
+  // In Percent view an admin types straight into the four End cells; one Save covers every row.
+  const editable = canEdit && !asDollars;
+  let rowIndex = 0;
+  const cell = (r, i, n) => {
+    if (editable) {
+      const spread = r.status === 'spread';
+      const v = spread ? '' : pctValue(r.shares[i]);
+      return `<td class="num ma-cellwrap"><input class="ma-cell" name="cell_${n}_${GOAL_KEYS[i]}" form="ma-cells" inputmode="decimal" value="${v}" placeholder="${spread ? pct0(r.shares[i]).replace('%', '') : '—'}" aria-label="${e(`${nameOf(r.line)}: ${MISSION_GOALS[i][1]} percent`)}" data-cell-row="${n}"></td>`;
+    }
     const v = asDollars ? r.parts[i] : r.shares[i];
     return `<td class="num">${v ? (asDollars ? money(v) : pct0(v)) : '—'}</td>`;
   };
@@ -78,7 +86,9 @@ export function renderMissionPage({ builder, data, prior = null, layout = null, 
     const [kind, text] = METHOD_BADGES[r.status];
     const link = pageHref('mission', target, { line: r.line.category, ...(show !== 'all' ? { show } : {}), ...(asDollars ? { as: 'usd' } : {}), ...(q ? { q } : {}) });
     const sel = r.line.category === selected;
-    return `<tr${sel ? ' class="is-sel" aria-selected="true"' : ''}><td>${canEdit ? `<a class="ma-rowlink" href="${link}">${sel ? `<strong>${e(nameOf(r.line))}</strong>` : e(nameOf(r.line))}</a>` : e(nameOf(r.line))}${r.note ? `<div class="ma-note">${e(r.note.length > 90 ? `${r.note.slice(0, 90)}…` : r.note)}</div>` : ''}</td><td class="num">${money(r.cents)}</td>${[0, 1, 2, 3].map((i) => cell(r, i)).join('')}<td>${stackBar(r.shares)}</td><td>${badge(kind, r.status === 'spread' ? 'Like the budget' : text)}</td></tr>`;
+    const n = rowIndex++;
+    const hidden = editable ? `<input type="hidden" form="ma-cells" name="row_${n}" value="${e(r.line.category)}"><input type="hidden" form="ma-cells" name="orig_${n}" value="${r.status === 'spread' ? '0,0,0,0' : r.shares.join(',')}">` : '';
+    return `<tr${sel ? ' class="is-sel" aria-selected="true"' : ''} data-row="${n}"><td>${hidden}${canEdit ? `<a class="ma-rowlink" href="${link}">${sel ? `<strong>${e(nameOf(r.line))}</strong>` : e(nameOf(r.line))}</a>` : e(nameOf(r.line))}${r.note ? `<div class="ma-note">${e(r.note.length > 90 ? `${r.note.slice(0, 90)}…` : r.note)}</div>` : ''}</td><td class="num">${money(r.cents)}</td>${[0, 1, 2, 3].map((i) => cell(r, i, n)).join('')}<td>${stackBar(r.shares, { live: editable })}</td><td>${badge(kind, r.status === 'spread' ? 'Like the budget' : text)}</td></tr>`;
   };
   let body = '';
   for (const s of sections) {
@@ -103,6 +113,7 @@ export function renderMissionPage({ builder, data, prior = null, layout = null, 
     <div class="ma-section-head"><h2>Line items</h2>${filters}</div>
     <div class="ma-frame"><table class="ma-table"><thead><tr><th scope="col">Line item</th><th scope="col" class="num">Budget</th>${MISSION_GOALS.map(([, l]) => `<th scope="col" class="num">${l}</th>`).join('')}<th scope="col">Split</th><th scope="col">Method</th></tr></thead>
     <tbody>${body || '<tr><td colspan="8" class="ma-muted">No lines match.</td></tr>'}</tbody></table></div>
+    ${editable ? `<form id="ma-cells" method="POST" action="/api/v1/planning/mission-save" class="ma-savebar">${hiddenYear(builder, data, 'lines')}<span class="ma-muted" data-cells-status>Click any Welcome, Receive, Grow or Go cell to type a percentage. Choose a line’s name for presets, “spread like the budget” and the reason.</span><button type="submit">Save percentages</button></form>` : ''}
     <p class="ma-note">These are planned resource allocations, not measures of ministry impact. All expense lines in the FY${target} plan are included. Staff salary and benefit lines are aligned on the Staff time page.</p></div>`;
   const row = programRows.find((r) => r.line.category === selected);
   const drawer = canEdit ? (row ? lineDrawer({ builder, data, row, prior, params, name: nameOf(row.line) }) : buildingDrawer(builder, data)) : '';
@@ -171,7 +182,7 @@ function setBy(person) {
   return person.mode === 'week' ? badge('ok', 'Typical week') : badge('info', 'Quick split');
 }
 
-export function renderStaffTimePage({ builder, data, layout = null, params, canEdit = false, now = new Date() }) {
+export function renderStaffTimePage({ builder, data, layout = null, params, canEdit = false, workers = null, now = new Date() }) {
   const target = builder.targetYear;
   const head = `${missionChips('staff-time', target, { admin: canEdit })}
     <div class="ma-head"><div><span class="ma-eyebrow">Budget · Mission alignment</span><h2>Staff time by End</h2><p class="ma-sub">FY${target} budget plan · a typical week, not a timesheet</p></div>${yearPicker('staff-time', target, now)}</div>`;
@@ -182,7 +193,7 @@ export function renderStaffTimePage({ builder, data, layout = null, params, canE
   const roleRow = (p) => {
     const sel = p.id === selectedId;
     const hours = p.mode === 'week' && p.weekResult.total ? p.weekResult.total : p.hours;
-    return `<tr${sel ? ' class="is-sel" aria-selected="true"' : ''}><td><a class="ma-rowlink" href="${pageHref('staff-time', target, { role: p.id, ...(p.mode === 'week' ? { mode: 'week' } : {}) })}">${sel ? `<strong>${e(p.label)}</strong>` : e(p.label)}</a>${p.pool ? '' : '<div class="ma-note">No compensation lines linked yet</div>'}</td><td class="num">${hours ? hoursText(hours) : '—'}</td><td class="num">${money(p.pool)}</td>${p.shares.map((s) => `<td class="num">${s ? pct0(s) : '—'}</td>`).join('')}<td>${stackBar(p.shares)}</td><td>${setBy(p)}</td></tr>`;
+    return `<tr${sel ? ' class="is-sel" aria-selected="true"' : ''}><td><a class="ma-rowlink" href="${pageHref('staff-time', target, { role: p.id, ...(p.mode === 'week' ? { mode: 'week' } : {}) })}">${sel ? `<strong>${e(p.label)}</strong>` : e(p.label)}</a>${p.planKey ? `<div class="ma-note">${e(p.name)}${workers && !workers.some((w) => w.key === p.planKey) ? ' · no longer in the compensation planner' : ' · from the compensation planner'}</div>` : ''}${p.pool ? '' : '<div class="ma-note">No compensation lines linked yet</div>'}</td><td class="num">${hours ? hoursText(hours) : '—'}</td><td class="num">${money(p.pool)}</td>${p.shares.map((s) => `<td class="num">${s ? pct0(s) : '—'}</td>`).join('')}<td>${stackBar(p.shares)}</td><td>${setBy(p)}</td></tr>`;
   };
   const totalHours = sum(model.staff.map((p) => (p.mode === 'week' && p.weekResult.total ? p.weekResult.total : p.hours || 0)));
   const allShares = model.staffPool ? model.staffTotals.map((c) => Math.round((c / model.staffPool) * FULL)) : [0, 0, 0, 0];
@@ -194,7 +205,35 @@ export function renderStaffTimePage({ builder, data, layout = null, params, canE
     <form method="POST" action="/api/v1/planning/mission-save" class="ma-year">${hiddenYear(builder, data, 'staff-add')}<label class="field"><span>Add a staff role</span><input name="label" maxlength="60" required placeholder="e.g. Music Director"></label><button type="submit" class="button-outline">Add role</button></form>
   </section>`;
   const person = model.staff.find((p) => p.id === selectedId);
-  return `${head}${statusLines(params)}${table}${person ? staffEditor({ builder, data, model, person, params, layout }) : ''}<script src="/mission-alignment/live.js" defer></script>`;
+  return `${head}${statusLines(params)}${params?.get('imported') ? `<p class="status status-ok" role="status">${Number(params.get('imported')) ? `${Number(params.get('imported'))} staff brought in from the compensation planner.` : 'Staff refreshed from the compensation planner.'} Set each person’s time below.</p>` : ''}${plannerPanel({ builder, data, model, workers, layout })}${table}${person ? staffEditor({ builder, data, model, person, params, layout }) : ''}<script src="/mission-alignment/live.js" defer></script>`;
+}
+
+// The compensation planner's staff, and the shared benefit lines they draw on.
+function plannerPanel({ builder, data, model, workers, layout }) {
+  const lay = layout || normalizeBoardLayout(null);
+  const lines = builder.lines.filter((l) => l.classification !== 'Income');
+  const linkedKeys = new Set(data.staff.map((s) => s.planKey).filter(Boolean));
+  const missing = (workers || []).filter((w) => !linkedKeys.has(w.key));
+  const plannerCost = sum((workers || []).map((w) => w.churchCostCents));
+  let status;
+  if (workers == null) status = '<p class="ma-badge warn" style="align-self:flex-start">The compensation planner could not be read just now. Staff already brought in are unchanged.</p>';
+  else if (!workers.length) status = '<p class="ma-muted" style="margin:0">The compensation planner has no staff paid from this budget yet.</p>';
+  else status = `<p class="ma-muted" style="margin:0">${workers.length} staff in the compensation planner, projected at ${money(plannerCost)} for FY${builder.targetYear}${missing.length ? ` · <strong>${missing.length} not yet here</strong>: ${missing.map((w) => e(w.position || w.name)).join(', ')}` : ' · all brought in'}. The budget’s staff lines hold ${money(model.staffPool)}${plannerCost && Math.abs(plannerCost - model.staffPool) >= 100000 ? `, so the budget and the planner differ by ${money(Math.abs(plannerCost - model.staffPool))}. Update the budget lines on the Budget planner if they should match` : ''}.</p>`;
+  const others = new Set(data.staff.flatMap((s) => s.sources));
+  const benefitChoices = lines.map((l, i) => ({ l, i })).filter(({ l }) => !others.has(l.category) && !data.lines[l.category]);
+  const likely = (l) => /health|medical|dental|vision|disabilit|pension|retire|fica|social security|payroll tax|benefit/i.test(`${l.category} ${l.name}`);
+  const shown = benefitChoices.filter(({ l }) => data.benefitLines.includes(l.category) || likely(l));
+  return `<section class="ma-panel ma-section" aria-labelledby="st-plan">
+    <div class="ma-section-head"><h2 id="st-plan">From the compensation planner</h2>${workers && workers.length ? `<form method="POST" action="/api/v1/planning/mission-save">${hiddenYear(builder, data, 'staff-import')}<button type="submit">${linkedKeys.size ? 'Refresh staff from the compensation planner' : 'Bring in staff from the compensation planner'}</button></form>` : ''}</div>
+    ${status}
+    <p class="ma-note" style="margin:0">Bringing staff in adds a role for each person paid from this budget, with their position and usual hours, and links the budget line their pay is charged to. Refreshing keeps the time splits you have set. Dollars always come from the budget plan, never from the planner; the planner only decides how the shared benefit lines below are divided among staff.</p>
+    <details${data.benefitLines.length ? '' : ' open'}><summary>Shared staff benefit lines · ${money(model.benefitPool)}</summary>
+      <form method="POST" action="/api/v1/planning/mission-save" style="display:flex;flex-direction:column;gap:10px">${hiddenYear(builder, data, 'staff-benefits')}
+        <p class="ma-note">Health, pension, disability and payroll-tax lines that cover all staff together. They are divided by each person’s benefits in the compensation planner (or by pay when there is no planner share).</p>
+        <div class="ma-sources">${shown.map(({ l, i }) => `<label><input type="checkbox" name="benefit_${i}" value="${e(l.category)}"${data.benefitLines.includes(l.category) ? ' checked' : ''}> ${e(accountDisplayName(lay, l.category, l.name))} · ${money(lineCents(l))}</label>`).join('') || '<span class="ma-muted">No benefit lines found in this plan.</span>'}</div>
+        <div class="ma-actions" style="justify-content:flex-start"><button type="submit" class="button-outline">Save benefit lines</button></div>
+      </form></details>
+  </section>`;
 }
 
 function staffEditor({ builder, data, model, person, params, layout }) {
@@ -206,7 +245,7 @@ function staffEditor({ builder, data, model, person, params, layout }) {
   const tab = (key, label) => `<a href="${pageHref('staff-time', target, { role: person.id, mode: key })}"${mode === key ? ' aria-current="page"' : ''}>${label}</a>`;
   const others = new Set(data.staff.filter((s) => s.id !== person.id).flatMap((s) => s.sources));
   const lines = builder.lines.filter((l) => l.classification !== 'Income');
-  const sources = lines.map((l, i) => ({ l, i })).filter(({ l }) => !others.has(l.category) && !data.lines[l.category]);
+  const sources = lines.map((l, i) => ({ l, i })).filter(({ l }) => !others.has(l.category) && !data.lines[l.category] && !data.benefitLines.includes(l.category));
   const likely = (l) => /salar|wage|benefit|pension|health|housing|fica|payroll|social security|insurance - staff/i.test(`${l.category} ${l.name}`);
   const sorted = [...sources.filter(({ l }) => person.sources.includes(l.category)), ...sources.filter(({ l }) => !person.sources.includes(l.category) && likely(l)), ...sources.filter(({ l }) => !person.sources.includes(l.category) && !likely(l))];
   const sourceBox = ({ l, i }) => `<label><input type="checkbox" name="source_${i}" value="${e(l.category)}"${person.sources.includes(l.category) ? ' checked' : ''}> ${e(accountDisplayName(lay, l.category, l.name))} · ${money(lineCents(l))}</label>`;
