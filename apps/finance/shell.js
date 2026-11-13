@@ -4209,7 +4209,7 @@ export default {
         const roleStarted = Date.now();
         // Page views may fall back to the role Connect last confirmed when Connect cannot answer
         // (role-cache.js); every save still verifies live.
-        const roleResult = await resolvePageRole(env, accessJwt, { requireLive: ['compensation', 'hr', 'payroll', 'accounts', 'packet', 'data'].includes(section.id) });
+        const roleResult = await resolvePageRole(env, accessJwt);
         const roleElapsedMs = Date.now() - roleStarted;
         // Production reads require the current Connect permission matrix. Only
         // unconfigured staging may show fixtures without a verified identity.

@@ -137,5 +137,6 @@ Missing gifts require deliberate review in Finance's Transactions page; neither 
 deletes them. Locally corrected or deposit-linked gifts remain unchanged. Link missing Breeze person
 numbers in Connect, then use Match gifts in Finance to fill only unattributed imported gifts.
 Comparison matches require external payment, person and fund references, date and cents. Monthly
-agreement alone is not migration acceptance. Permission fallback lasts at most five minutes; sensitive
-HR, payroll, compensation, accounts, packets and import pages require a live role verification.
+agreement alone is not migration acceptance. All protected pages, downloads and writes require live
+role verification. If Connect is unavailable, restore its role service rather than enabling cached
+authorization. Existing role-cache rows are inert and need no destructive cleanup for this release.

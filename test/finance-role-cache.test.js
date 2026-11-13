@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import worker from '../apps/finance/shell.js';
 import { resetEnsuredSchemasForTests } from '../apps/finance/finance-owned-schema.js';
 import { resetAccessJwtCacheForTests } from '../apps/finance/access-jwt.js';
-import { ROLE_CACHE_MAX_AGE_MS, resolvePageRole } from '../apps/finance/role-cache.js';
+import { resolvePageRole } from '../apps/finance/role-cache.js';
 
 const TEAM = 'team.example.com';
 const AUD = 'finance-aud';
@@ -49,7 +49,8 @@ function makeEnv(db = makeDb()) {
         if (!url.pathname.endsWith('/staff-role-v1')) return new Response('{}', { status: 404 });
         if (state.mode === 'timeout') { const e = new Error('The operation was aborted due to timeout'); e.name = 'TimeoutError'; throw e; }
         if (state.mode === '503') return new Response('{}', { status: 503 });
-        if (state.mode === '403') return new Response(JSON.stringify({ error: 'No matching active Connect account' }), { status: 403 });
+        if (['401','403'].includes(state.mode)) return new Response('{}', { status: Number(state.mode) });
+        if (state.mode === 'demoted') return Response.json({role:'council',identity:'admin@example.org',permissions:{finance:'view'}});
         return new Response(JSON.stringify({ role: 'admin', identity: 'admin@example.org', username: 'andrew', permissions: { finance: 'edit', giving: 'edit' } }));
       },
     },
@@ -59,79 +60,51 @@ function makeEnv(db = makeDb()) {
 
 beforeEach(() => { resetEnsuredSchemasForTests(); resetAccessJwtCacheForTests(); });
 
-describe('Finance role fallback', () => {
-  it('saves each confirmed role and uses it when Connect times out', async () => {
+describe('Finance live authorization', () => {
+  async function seedCachedAdmin(db) {
+    await resolvePageRole(makeEnv(db).env, await jwt({}));
+    db.sqlite.exec("CREATE TABLE IF NOT EXISTS finance_role_cache(identity TEXT PRIMARY KEY,role TEXT,permissions_json TEXT,username TEXT,verified_at TEXT)");
+    db.sqlite.prepare("INSERT OR REPLACE INTO finance_role_cache VALUES(?,?,?,?,datetime('now'))").run('admin@example.org','admin','{"finance":"edit","giving":"edit"}','test-admin');
+  }
+
+  it('never restores a cached administrator after denial followed by outage', async () => {
     const { env, db, state } = makeEnv();
     const token = await jwt({});
-    expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).role).toBe('admin');
-    expect(db.sqlite.prepare('SELECT identity, role FROM finance_role_cache').get()).toEqual({ identity: 'admin@example.org', role: 'admin' });
-    state.mode = 'timeout';
-    const saved = await resolvePageRole(env, token, { fetchImpl: certsFetch });
-    expect(saved).toMatchObject({ ok: true, role: 'admin', source: 'saved', identity: 'admin@example.org', permissions: { finance: 'edit', giving: 'edit' } });
-    state.mode = '503';
-    expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).source).toBe('saved');
-  });
-
-  it('requires a live answer for sensitive page requests even with a recent cached role', async () => {
-    const { env, state } = makeEnv();
-    const token = await jwt({});
-    await resolvePageRole(env, token, { fetchImpl: certsFetch });
-    state.mode = '503';
-    expect(await resolvePageRole(env, token, { fetchImpl: certsFetch, requireLive: true })).toMatchObject({ ok: false, status: 503 });
-  });
-
-  it('never overrides a refusal from Connect', async () => {
-    const { env, state } = makeEnv();
-    const token = await jwt({});
-    await resolvePageRole(env, token, { fetchImpl: certsFetch });
-    state.mode = '403';
-    expect(await resolvePageRole(env, token, { fetchImpl: certsFetch })).toMatchObject({ ok: false, status: 403 });
-    state.mode = '503';
-    expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).ok).toBe(false);
-  });
-
-  it('ignores a saved role older than five minutes', async () => {
-    const { env, db, state } = makeEnv();
-    const token = await jwt({});
-    await resolvePageRole(env, token, { fetchImpl: certsFetch });
-    db.sqlite.prepare("UPDATE finance_role_cache SET verified_at = datetime('now', '-8 days')").run();
-    state.mode = 'timeout';
-    expect((await resolvePageRole(env, token, { fetchImpl: certsFetch })).ok).toBe(false);
-    expect(ROLE_CACHE_MAX_AGE_MS).toBe(5 * 60 * 1000);
-  });
-
-  it('needs a valid sign-in for this Finance app before using a saved role', async () => {
-    const { env, state } = makeEnv();
-    await resolvePageRole(env, await jwt({}), { fetchImpl: certsFetch });
-    state.mode = 'timeout';
-    for (const bad of [await jwt({ aud: ['other-app'] }), await jwt({ exp: Math.floor(Date.now() / 1000) - 10 }), await jwt({ email: 'someone.else@example.org' }), 'not.a.jwt']) {
-      expect((await resolvePageRole(env, bad, { fetchImpl: certsFetch })).ok).toBe(false);
+    await seedCachedAdmin(db);
+    expect(await resolvePageRole(env, token)).toMatchObject({ok:true,role:'admin'});
+    for (const denied of ['401','403']) {
+      state.mode=denied;
+      expect(await resolvePageRole(env, token)).toMatchObject({ok:false,status:Number(denied)});
+      for (const failure of ['503','timeout']) {
+        state.mode=failure;
+        expect((await resolvePageRole(env, token)).ok).toBe(false);
+      }
     }
   });
 
-  it('opens the page with a notice when Connect cannot answer', async () => {
-    const { env, state } = makeEnv();
-    const token = await jwt({});
-    // The page itself fetches Access's certs through the global fetch.
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = certsFetch;
-    try {
-      await worker.fetch(new Request('https://finance.test/?section=property&page=acquisition', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
-      state.mode = 'timeout';
-      const res = await worker.fetch(new Request('https://finance.test/?section=property&page=acquisition', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
-      expect(res.status).toBe(200);
-      const html = await res.text();
-      expect(html).toContain('Connect unavailable');
-      expect(html).toContain('6707 Fyler pro forma');
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+  it('uses current demoted permissions and never the historical administrator during outage', async () => {
+    const {env,db,state}=makeEnv();
+    const token=await jwt({});
+    await seedCachedAdmin(db);
+    state.mode='demoted';
+    expect(await resolvePageRole(env, token)).toMatchObject({ok:true,role:'council',permissions:{finance:'view'}});
+    state.mode='503';
+    expect((await resolvePageRole(env, token)).ok).toBe(false);
+  });
+
+  it.each(['property','compensation','hr','payroll','accounts','packet','data'])('blocks %s pages before reading local data during an outage', async section => {
+    const {env,db,state}=makeEnv();
+    const token=await jwt({});
+    await seedCachedAdmin(db);
+    state.mode='timeout';
+    const response=await worker.fetch(new Request('https://finance.test/?section='+section, {headers:{'Cf-Access-Jwt-Assertion':token}}),env);
+    expect(response.status).not.toBe(200);
+    expect(response.headers.get('Location')||await response.text()).toMatch(/access_denied|unavailable|Connect/i);
   });
 
   it('keeps saves on the live check', async () => {
     const { env, state } = makeEnv();
     const token = await jwt({});
-    await resolvePageRole(env, token, { fetchImpl: certsFetch });
     state.mode = 'timeout';
     const res = await worker.fetch(new Request('https://finance.test/api/v1/property/bank-rec-save', {
       method: 'POST', headers: { 'Cf-Access-Jwt-Assertion': token, 'Sec-Fetch-Site': 'same-origin' },
