@@ -3,7 +3,7 @@
 // words on the congregation slide are edited here (admins). No per-person compensation appears:
 // staff time is shown as shares of time and one combined staff total.
 import { escapeHtml as e } from './render-helpers.js';
-import { buildBoardSections, normalizeBoardLayout, accountDisplayName } from './board-layout.js';
+import { buildBoardSections, normalizeBoardLayout, accountDisplayName, boardCategoryFor } from './board-layout.js';
 import { MISSION_GOALS, distribute, missionModel } from './mission-alignment.js';
 import { PRESENT_COLORS, missionChips, money, pageHref, pct0, pie, sum, yearPicker } from './mission-ui.js';
 import { trendHeadline, wholeChart, change } from './budget-trends.js';
@@ -31,11 +31,31 @@ function sideGroups(builder, layout, isRevenue) {
   const sections = buildBoardSections(lines, lay, (l) => ({ path: l.category, name: l.name, isRevenue }));
   const flat = isRevenue ? sections.revenue.flatMap((s) => (s.kind === 'wrapper' ? s.groups : [s])) : sections.expense;
   return flat.map((g) => ({
-    label: g.label,
+    key: g.key, label: g.label, items: g.items,
     plan: sum(g.items.map((l) => l.plan?.plannedAmountCents || 0)),
     prior: g.items.some((l) => l.baseBudgetCents != null) ? sum(g.items.map((l) => l.baseBudgetCents || 0)) : null,
   })).filter((g) => g.plan || g.prior).sort((a, b) => b.plan - a.plan);
 }
+
+// Mother's Day Out runs on its own tuition, so the donor view sets it aside: its board category (or
+// its name) on the expense side, and its tuition on the income side.
+const MDO_RE = /\bMDO\b|mother.?s day out/i;
+export function splitOutMdo(builder, layout) {
+  const lay = layout || normalizeBoardLayout(null);
+  const isMdo = (l) => {
+    if (MDO_RE.test(`${l.category} ${l.name || ''}`)) return true;
+    if (l.classification === 'Income') return false;
+    return boardCategoryFor(lay, l.category, l.name, false).key === 'mdo';
+  };
+  const cents = (l) => l.plan?.plannedAmountCents || 0;
+  const mdo = builder.lines.filter(isMdo);
+  return {
+    church: { ...builder, lines: builder.lines.filter((l) => !isMdo(l)) },
+    mdoIncome: sum(mdo.filter((l) => l.classification === 'Income').map(cents)),
+    mdoCost: sum(mdo.filter((l) => l.classification !== 'Income').map(cents)),
+  };
+}
+const DONOR_KEYS = ['donor', 'restricted'];
 
 function hbars(groups, color, baseYear) {
   const max = Math.max(1, ...groups.flatMap((g) => [g.plan, g.prior || 0]));
@@ -48,12 +68,17 @@ function hbars(groups, color, baseYear) {
 
 // ── For the congregation ─────────────────────────────────────────────────────────────────────
 
-export function renderCongregationPage({ builder, data, layout = null, trend = null, params, canEdit = false, now = new Date() }) {
-  const target = builder.targetYear;
+export function renderCongregationPage({ builder: fullBuilder, data, layout = null, trend = null, params, canEdit = false, now = new Date() }) {
+  const target = fullBuilder.targetYear;
+  const donorView = params?.get('view') === 'donor';
+  const mdoSplit = splitOutMdo(fullBuilder, layout);
+  // In the donor view the mission slide and the spending slide leave Mother's Day Out out.
+  const builder = donorView ? mdoSplit.church : fullBuilder;
+  const viewSwitch = `<nav class="segmented ma-noprint" aria-label="Which view" style="margin:0 0 16px;display:inline-flex;gap:4px">${[['', 'Whole budget'], ['donor', 'Donor dollars']].map(([v, l]) => `<a href="${pageHref('congregation', target, v ? { view: v } : {})}"${(v === 'donor') === donorView ? ' aria-current="page" style="background:#1B2A4A;color:#fff"' : ''}>${l}</a>`).join('')}</nav>${donorView ? `<p class="ma-note ma-noprint" style="margin:0 0 14px">Mother’s Day Out pays its own way from tuition, so this view sets it aside to show how gifts and the church’s other income are used.</p>` : ''}`;
   const income = builder.lines.filter((l) => l.classification === 'Income').reduce((t, l) => t + (l.plan?.plannedAmountCents || 0), 0);
   const expenses = builder.lines.filter((l) => l.classification !== 'Income').reduce((t, l) => t + (l.plan?.plannedAmountCents || 0), 0);
   const head = `<div class="ma-noprint">${missionChips('congregation', target, { admin: canEdit })}
-    <div class="ma-head"><div><span class="ma-eyebrow">Budget · For the congregation</span><h2>Presenting the FY${target} budget</h2><p class="ma-sub">Slides for a congregation meeting. Use Print to save them as a PDF, one slide per page.</p></div>${yearPicker('congregation', target, now)}</div>
+    <div class="ma-head"><div><span class="ma-eyebrow">Budget · For the congregation</span><h2>Presenting the FY${target} budget</h2><p class="ma-sub">Slides for a congregation meeting. Use Print to save them as a PDF, one slide per page.</p></div>${yearPicker('congregation', target, now)}</div>${viewSwitch}
     ${params?.get('status') === 'ok' && params?.get('mission') === '1' ? '<p class="status status-ok" role="status">Saved.</p>' : ''}
     ${params?.get('status') === 'error' ? `<p class="status status-error" role="alert">${e(String(params.get('message') || 'The change could not be saved.').slice(0, 200))} Nothing was saved.</p>` : ''}</div>`;
   const rule = '<div class="cv-rule"></div>';
@@ -71,7 +96,7 @@ export function renderCongregationPage({ builder, data, layout = null, trend = n
       const staffCents = model.total ? Math.round((model.staffPool / model.total) * 100) : 0;
       const strip = MISSION_GOALS.map(([, l], i) => (cents[i] ? `<div style="width:${cents[i]}%;background:${PRESENT_COLORS[i]}"><b>${cents[i]}¢</b>${cents[i] >= 12 ? l : ''}</div>` : '')).join('');
       slides.push(`<section class="cv-slide" aria-label="How your gifts do the mission">${rule}<div class="cv-body">
-        <div class="cv-head"><div><span class="cv-eyebrow">${target} Budget · ${money(model.total)}</span><h2 class="cv-serif">How your gifts do the mission</h2><p class="cv-lede">Every line in our budget serves one of four Ends. Here is where a dollar goes.</p></div>${org}</div>
+        <div class="cv-head"><div><span class="cv-eyebrow">${target} ${donorView ? 'ministry budget, without Mother’s Day Out' : 'Budget'} · ${money(model.total)}</span><h2 class="cv-serif">How your gifts do the mission</h2><p class="cv-lede">Every line in our budget serves one of four Ends. Here is where a dollar goes.</p></div>${org}</div>
         <div class="cv-dollar" role="img" aria-label="${e(`Of every dollar: ${MISSION_GOALS.map(([, l], i) => `${l} ${cents[i]} cents`).join(', ')}`)}">${strip}</div>
         <div class="cv-ends">${MISSION_GOALS.map(([, l, sub], i) => `<section class="cv-end" style="background:${PRESENT_COLORS[i]}"><div><h3 class="cv-serif">${l}</h3><span class="cv-eyebrow" style="color:#1E2D4A;font-size:12px">${sub}</span></div>
           <div class="cv-amt"><b>${money(model.totals[i])}</b><span>${cents[i]}¢ of every dollar</span></div>
@@ -82,11 +107,40 @@ export function renderCongregationPage({ builder, data, layout = null, trend = n
     }
   }
 
+  // Slide 2 (donor view): where gifts come from and what they carry.
+  if (donorView) {
+    const incomeGroups = sideGroups(builder, layout, true);
+    const lay = layout || normalizeBoardLayout(null);
+    const giftLines = incomeGroups.filter((g) => DONOR_KEYS.includes(g.key)).flatMap((g) => g.items)
+      .map((l) => ({ label: accountDisplayName(lay, l.category, l.name), plan: l.plan?.plannedAmountCents || 0, prior: l.baseBudgetCents ?? null }))
+      .filter((g) => g.plan || g.prior).sort((a, b) => b.plan - a.plan);
+    const gifts = sum(giftLines.map((g) => g.plan));
+    const other = incomeGroups.filter((g) => !DONOR_KEYS.includes(g.key)).map((g) => ({ label: g.label, plan: g.plan })).filter((g) => g.plan);
+    const mdoNet = mdoSplit.mdoIncome - mdoSplit.mdoCost;
+    const support = [...other, ...(mdoSplit.mdoIncome || mdoSplit.mdoCost ? [{ label: 'Mother’s Day Out, after its own costs', plan: mdoNet }] : [])];
+    const ministryGroups = sideGroups(builder, layout, false);
+    const ministry = sum(ministryGroups.map((g) => g.plan));
+    const cents = ministry > 0 ? distribute(100, ministryGroups.map((g) => Math.max(0, g.plan))) : ministryGroups.map(() => 0);
+    const otherTotal = sum(support.map((x) => x.plan));
+    const gap = gifts + otherTotal - ministry;
+    const giftShare = ministry > 0 ? Math.round((gifts / ministry) * 100) : 0;
+    slides.push(`<section class="cv-slide" aria-label="How gifts are used">${rule}<div class="cv-body">
+      <div class="cv-head"><div><span class="cv-eyebrow">${target} proposed budget · Donor dollars</span><h2 class="cv-serif">What your gifts carry</h2><p class="cv-lede">Gifts of ${money(gifts)} carry about ${giftShare}% of the ${money(ministry)} we plan to spend on ministry. Mother’s Day Out pays its own way${mdoNet > 0 ? ` and adds ${money(mdoNet)}` : ''}; endowments, rent and fundraisers help with the rest${gap < 0 ? `, leaving a gap of ${money(-gap)} to close together.` : '.'}</p></div>${org}</div>
+      <div class="cv-two">
+        <div class="cv-panel"><h3>Gifts · ${money(gifts)}</h3>${hbars(giftLines, '#2E7EA6', builder.baseYear)}
+          ${support.length ? `<h3 style="margin-top:8px">Also supporting ministry · ${money(otherTotal)}</h3><table class="cv-table"><tbody>${support.map((x) => `<tr><td>${e(x.label)}</td><td class="num">${money(x.plan)}</td></tr>`).join('')}</tbody></table>` : ''}</div>
+        <div class="cv-panel"><h3>Where ministry spending goes · ${money(ministry)}</h3>${hbars(ministryGroups, '#C9973A', builder.baseYear)}
+          <table class="cv-table"><thead><tr><th scope="col">Of each gift dollar</th><th scope="col" class="num">Cents</th></tr></thead><tbody>${ministryGroups.map((g, i) => `<tr><td>${e(g.label)}</td><td class="num"><b>${cents[i]}¢</b></td></tr>`).join('')}</tbody></table></div>
+      </div>
+      <div class="cv-foot"><p style="margin:0">Gifts are counted as going where all ministry spending goes, in the same proportions. Mother’s Day Out (${money(mdoSplit.mdoCost)} in costs, ${money(mdoSplit.mdoIncome)} in tuition) is set aside here because tuition pays for it.</p><small>Proposed budget for discussion</small></div>
+    </div></section>`);
+  }
+
   // Slide 2: where the money comes from and where it goes.
   const revenueGroups = sideGroups(builder, layout, true);
   const expenseGroups = sideGroups(builder, layout, false);
   const gap = income - expenses;
-  slides.push(`<section class="cv-slide" aria-label="Where the money comes from and where it goes">${rule}<div class="cv-body">
+  if (!donorView) slides.push(`<section class="cv-slide" aria-label="Where the money comes from and where it goes">${rule}<div class="cv-body">
     <div class="cv-head"><div><span class="cv-eyebrow">${target} proposed budget</span><h2 class="cv-serif">Where it comes from, where it goes</h2><p class="cv-lede">${money(income)} expected in, ${money(expenses)} planned out${gap === 0 ? ', balanced.' : gap > 0 ? `, ${money(gap)} to spare.` : `: a gap of ${money(-gap)} to close together.`}</p></div>${org}</div>
     <div class="cv-two">
       <div class="cv-panel"><h3>Where it comes from · ${money(income)}</h3>${hbars(revenueGroups, '#2E7EA6', builder.baseYear)}</div>

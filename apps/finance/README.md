@@ -107,7 +107,10 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   and each role (percent only, no pay by person), the table, and the reasons for shared lines.
 - **For the congregation** (anyone who sees the budget; admins edit the slide words). Print-ready
   slides: cents of every dollar by End, where income comes from and where it goes against this
-  year's budget, and how the budget has changed since 2022.
+  year's budget, and how the budget has changed since 2022. A *Donor dollars* switch sets Mother's Day Out
+  aside (its board category or name, and its tuition, since tuition pays for it) and shows gifts
+  (the Donor and Restricted income categories), the other income that supports ministry including
+  Mother's Day Out's net, where ministry spending goes, and the cents of each gift dollar per area.
 - **Trends** (anyone who sees the budget). Income and expenses by year since 2022 (selectable):
   QuickBooks actuals for closed years from connect.finance-chart-of-accounts.v1, the planner's
   projection for the base year and the proposed plan, by board category and, optionally, each line.

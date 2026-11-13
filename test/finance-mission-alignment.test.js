@@ -250,6 +250,27 @@ describe('mission pages', () => {
   });
 });
 
+describe('donor dollars view', () => {
+  it('sets Mother’s Day Out aside and shows what gifts carry', () => {
+    const b = { targetYear: 2027, baseYear: 2026, lines: [
+      line('Income:40 Donor Income (Unrestricted):40085 Sunday Offering', 44000000, 'Income'), line('Income:47 Mother\'s Day Out:47020 MDO Tuition', 62500000, 'Income'),
+      line('Income:42 Passive Income:42006 Endowment', 6000000, 'Income'),
+      line('Expenses:57 MDO Expenses:57161 MDO - Wages', 42500000), line('Expenses:52 Property:52094 Utilities', 3500000), line('Expenses:Worship', 600000)] };
+    const data = { ...emptyMission(), lines: { 'Expenses:52 Property:52094 Utilities': { method: 'split', shares: [2500, 2500, 2500, 2500], note: '' }, 'Expenses:Worship': { method: 'one', shares: [0, 10000, 0, 0], note: '' }, 'Expenses:57 MDO Expenses:57161 MDO - Wages': { method: 'split', shares: [7000, 0, 0, 3000], note: '' } } };
+    const html = renderCongregationPage({ builder: b, data, params: new URLSearchParams('view=donor') });
+    expect(html).toContain('What your gifts carry');
+    expect(html).toContain('Gifts · $440,000');
+    expect(html).toContain('Mother’s Day Out, after its own costs');
+    expect(html).toContain('$200,000'); // 625,000 tuition − 425,000 costs
+    expect(html).toContain('Where ministry spending goes · $41,000');
+    expect(html).toContain('ministry budget, without Mother’s Day Out · $41,000');
+    expect(html).not.toContain('Where it comes from, where it goes');
+    const whole = renderCongregationPage({ builder: b, data, params: new URLSearchParams() });
+    expect(whole).toContain('Where it comes from, where it goes');
+    expect(whole).toContain('Donor dollars');
+  });
+});
+
 describe('budget trends', () => {
   const years = [
     { year: 2024, ok: true, accounts: [{ path: 'Expenses:Utilities', name: 'Utilities', isRevenue: false, actual: 800000, budget: 850000 }, { path: 'Income:Giving', name: 'Giving', isRevenue: true, actual: 11000000, budget: null }] },
