@@ -66,6 +66,10 @@ import { canEditFacilities, describeFacilitiesStatus, ensureFacilitiesSchema, ha
 import { serveFacilityFile } from './facility-files.js';
 import { FormValidationError } from './form-fields.js';
 import { MISSION_LIVE_JS, readMission, saveMission, canManageMission } from './mission-alignment.js';
+import { MISSION_STYLES } from './mission-ui.js';
+import { renderMissionPage, renderStaffTimePage } from './mission-pages.js';
+import { renderCongregationPage, renderMissionReportPage } from './mission-visuals.js';
+import { buildTrendModel, loadTrendYears, renderTrendsPage as renderBudgetTrendsPage, trendStartYear } from './budget-trends.js';
 import { PLANNING_WRITERS, canEditPlanning, ensurePlanningSchema, readPlanningScenarios } from './planning-scenarios-service.js';
 import { PLANNING_V3_STYLES, renderForecastPage, renderScenariosPage } from './planning-v3-pages.js';
 import { describePlanningBasisFailure, fetchPlanningBasis } from './connect-planning-client.js';
@@ -258,6 +262,7 @@ const SECURITY_HEADERS = Object.freeze({
 // it) and any image embedded in a letter template (a data: URL). Images only; still no script.
 const DONOR_LETTERS_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: https://connect.timothystl.org; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 // The Budget planner's edit form loads one script from this Worker (live totals); nothing else.
+const MISSION_PAGE_IDS = new Set(['mission', 'staff-time', 'mission-report', 'congregation', 'trends']);
 const BUDGET_PLANNER_PAGE_CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 const PLANNER_PAGE_CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 
@@ -1809,6 +1814,26 @@ function renderSectionBody(ctx) {
       params: ctx.searchParams, layout: ctx.boardLayout || null,
     });
   }
+  if (section.id === 'planning' && MISSION_PAGE_IDS.has(page.id)) {
+    if (!ctx.budgetBuilder?.ok) return renderDataUnavailablePage({ eyebrow: section.label, heading: page.label, reason: 'The budget plan could not be read from Connect just now. Reload to try again.' });
+    // Editing mission alignment and seeing staff time stay admin-only (staff time sits beside
+    // compensation); the report, congregation slides and trends are for anyone who sees the budget.
+    const admin = !councilPreview && canManageMission(roleResult);
+    const builder = ctx.budgetBuilder.builder;
+    const data = ctx.missionAlignment && !isSyntheticUnavailable(ctx.missionAlignment) ? ctx.missionAlignment : null;
+    const shared = { builder, data, layout: ctx.boardLayout || null, params: ctx.searchParams };
+    if (page.id === 'mission') {
+      if (!admin) return renderDataUnavailablePage({ eyebrow: section.label, heading: page.label, reason: 'Only a Finance administrator can align budget lines. The Mission report shows the result.' });
+      const prior = ctx.missionPrior && !isSyntheticUnavailable(ctx.missionPrior) ? ctx.missionPrior : null;
+      return renderMissionPage({ ...shared, prior, canEdit: true });
+    }
+    if (page.id === 'staff-time') return renderStaffTimePage({ ...shared, canEdit: admin });
+    if (page.id === 'mission-report') return renderMissionReportPage({ ...shared, admin });
+    const trend = ctx.budgetTrend && !isSyntheticUnavailable(ctx.budgetTrend) ? ctx.budgetTrend : null;
+    if (page.id === 'congregation') return renderCongregationPage({ ...shared, trend, canEdit: admin });
+    if (!trend) return renderDataUnavailablePage({ eyebrow: section.label, heading: page.label, reason: 'The budget history could not be read just now. Reload to try again.' });
+    return renderBudgetTrendsPage({ builder, model: trend, params: ctx.searchParams, admin });
+  }
   if (section.id === 'planning' && page.id === 'builder' && ctx.budgetBuilder?.ok) {
     const isAdmin = !councilPreview && roleResult.ok && roleResult.role === 'admin';
     const isCouncil = roleResult.ok && roleResult.role === 'council';
@@ -1820,7 +1845,6 @@ function renderSectionBody(ctx) {
     const plannerOp = ctx.searchParams.get('op') === 'planner';
     return renderBudgetBuilderPage({
       ...shared,
-      missionAlignment: isAdmin && !isSyntheticUnavailable(ctx.missionAlignment) ? ctx.missionAlignment : null,
       liveVersion: ctx.metadata?.releaseSha || 'local',
       // Council with budget edit may change Plan cells only, saved to their own draft by Connect;
       // Projected and Actual corrections, and the plan tools, stay admin-only (Connect re-checks).
@@ -2033,7 +2057,7 @@ function renderShell(ctx) {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Timothy Finance${production ? '' : ' — Staging'}</title>
   <link rel="icon" href="/assets/finance-mark.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="/assets/finance-icon-192.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#052241"><meta name="apple-mobile-web-app-title" content="Finance"><meta name="apple-mobile-web-app-capable" content="yes">
-  <style>${SHELL_STYLES}${HEALTH_STYLES}${HEALTH_PARITY_STYLES}${FACILITIES_STYLES}${HR_STYLES}${PAYROLL_STYLES}${GIFT_BATCH_STYLES}${GIFT_TRANSACTIONS_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_REPORTS_STYLES}${DONOR_LETTERS_STYLES}${PLEDGE_STYLES}${GIVING_ANALYTICS_STYLES}${PLANNING_V3_STYLES}${ACCESS_STYLES}${BUDGET_BUILDER_STYLES}${ACQUISITION_STYLES}${PROPERTY_BOOKS_STYLES}${PROPERTY_CHART_STYLES}${BALANCE_STYLES}${FUND_CLEANUP_STYLES}${CHURCH_YEAR_STYLES}</style>
+  <style>${SHELL_STYLES}${HEALTH_STYLES}${HEALTH_PARITY_STYLES}${FACILITIES_STYLES}${HR_STYLES}${PAYROLL_STYLES}${GIFT_BATCH_STYLES}${GIFT_TRANSACTIONS_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_REPORTS_STYLES}${DONOR_LETTERS_STYLES}${PLEDGE_STYLES}${GIVING_ANALYTICS_STYLES}${PLANNING_V3_STYLES}${ACCESS_STYLES}${BUDGET_BUILDER_STYLES}${MISSION_STYLES}${ACQUISITION_STYLES}${PROPERTY_BOOKS_STYLES}${PROPERTY_CHART_STYLES}${BALANCE_STYLES}${FUND_CLEANUP_STYLES}${CHURCH_YEAR_STYLES}</style>
 </head>
 <body${councilPreview ? ' class="council-preview"' : ''}>
   <header class="app-header">
@@ -4014,7 +4038,7 @@ export default {
 
     if (route.id === 'mission-save-v1') {
       return handleFinanceFormWrite({ request, env, url, section: 'planning', canEdit: canManageMission,
-        writer: { page: 'builder', run: async (db, form, actor) => {
+        writer: { page: 'mission', run: async (db, form, actor) => {
           const target = Number(form.target); const base = Number(form.base);
           if (!Number.isInteger(target) || target < 2001 || target > 2099 || !Number.isInteger(base) || base < 2000 || base >= target) throw new FormValidationError('Choose valid budget years.');
           const result = await fetchBudgetBuilder(env, target, base);
@@ -4473,17 +4497,30 @@ export default {
         const planningPageId = section.id === 'planning' ? resolveFinancePage(section, pageId).id : null;
         const planningV3 = ['scenarios', 'multi-year'].includes(planningPageId);
         // The Budget planner's base and target years come from its own view parameters.
-        const plannerView = planningPageId === 'builder' ? plannerParams(url.searchParams) : null;
+        const missionPage = MISSION_PAGE_IDS.has(planningPageId) ? planningPageId : null;
+        const plannerView = planningPageId === 'builder' || missionPage ? plannerParams(url.searchParams) : null;
         let budgetBuilder = plannerView ? fetchBudgetBuilder(env, plannerView.target, plannerView.base) : null;
-        const missionLoad = plannerView && !councilPreview && canManageMission(roleResult)
+        // Mission alignment: the editors are admin-only; the report and congregation slides read it
+        // for anyone who can see the budget. Line items also reads last year's, for "Copy from last year".
+        const missionReads = missionPage && missionPage !== 'trends' && (!['mission', 'staff-time'].includes(missionPage) || (!councilPreview && canManageMission(roleResult)));
+        const missionLoad = missionReads
           ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear)) : null) : null;
+        const missionPriorLoad = missionPage === 'mission' && missionReads
+          ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear - 1)) : null) : null;
         // A council member sees their own Plan draft, read back through Connect as themselves.
         const councilBudgetDraftLoad = plannerView && !councilPreview && roleResult.ok && roleResult.role === 'council'
           ? fetchCouncilBudgetDraft(env, accessJwt) : null;
         // The Chart of Accounts board layout (categories, headings, renames, purpose tags) lays out
         // the Budget planner and scenarios, and is what the Chart of Accounts editor edits.
-        let boardLayoutResult = (['builder', 'scenarios', 'multi-year'].includes(planningPageId) || section.id === 'accounts') ? fetchBoardLayout(env) : null;
+        let boardLayoutResult = (['builder', 'scenarios', 'multi-year'].includes(planningPageId) || missionPage || section.id === 'accounts') ? fetchBoardLayout(env) : null;
         let boardLayout = after(boardLayoutResult, (result) => (result && result.ok ? normalizeBoardLayout(result.layout) : null));
+        // Trends since 2022: each closed year's QuickBooks actuals, then the projection and the plan.
+        const budgetTrendLoad = ['trends', 'congregation'].includes(missionPage)
+          ? after(budgetBuilder, (result) => (result?.ok ? safeSyntheticRead(async () => {
+            const b = result.builder;
+            const years = await loadTrendYears(env, trendStartYear(url.searchParams, b.baseYear), b.baseYear);
+            return buildTrendModel({ builder: b, years, layout: await boardLayout });
+          }) : null)) : null;
         const planningLoads = planningV3 ? Promise.all([
           fetchPlanningBasis(env, defaultLiveBudgetFiscalYear()),
           safeSyntheticRead(async () => {
@@ -4925,7 +4962,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          missionAlignment: await missionLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          missionAlignment: await missionLoad, missionPrior: await missionPriorLoad, budgetTrend: await budgetTrendLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,
@@ -4975,7 +5012,7 @@ export default {
           shellResponse.headers.set('Content-Security-Policy', PLANNER_PAGE_CSP);
         } else if (section.id === 'data' && effectivePageId === 'giving-imports' && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);
-        } else if (section.id === 'planning' && effectivePageId === 'builder' && !printMode) {
+        } else if (section.id === 'planning' && ['builder', 'mission', 'staff-time'].includes(effectivePageId) && !printMode) {
           shellResponse.headers.set('Content-Security-Policy', BUDGET_PLANNER_PAGE_CSP);
         } else if (section.id === 'giving-reports' && effectivePageId === 'plateaus' && !printMode) {
           // Nudges and next steps: one script from this Worker previews the weekly increases as they are typed.

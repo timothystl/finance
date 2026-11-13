@@ -15,7 +15,10 @@ fixtures, or documentation.
   increase the Commercial Property Debt page's income estimate opens with,
   `finance_property_rent_growth_pct`, the board packet cover-letter template `board_packet_cover_template`,
   each person's final report list, `board_final_report_<username>`, and the ZIP codes Giving › Campaign
-  capacity compares with, `finance_campaign_benchmark_zips`).
+  capacity compares with, `finance_campaign_benchmark_zips`, and each budget year's mission alignment,
+  `finance_mission_alignment_<year>`: line splits by End with their reasons, staff time splits, the
+  building-use preset and the congregation slide's words. Budget and compensation amounts stay in
+  Connect's plan; the alignment only refers to plan lines by category).
   The accounting tables (the list is `FINANCE_TABLES` in `src/finance-storage.js`) were copied from
   Connect's database at the September 23, 2026 cutover (13,411 rows across 14 tables, verified row by
   row against the frozen source). Finance is now the only writer.

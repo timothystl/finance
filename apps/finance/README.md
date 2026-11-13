@@ -76,19 +76,30 @@ A separate familiar accounting layout is served at `/accounting` (see ARCHITECTU
 - `migration/`: copy-and-verify tooling used for the accounting data move.
 - `fixtures/`: synthetic test data; applied by hand, never as a migration, never to production.
 
-### Mission alignment and staff time
+### Mission alignment, staff time and presenting the budget
 
-Budget planner → Mission alignment & staff time is an admin-only, year-scoped worksheet.
-Each expense has a Welcome (acceptance), Receive (worship), Grow (Christian education),
-and Go (Outreach) percentage split. Partial allocations are saved as work in progress,
-with unallocated dollars shown explicitly. Add a staff role, link its existing salary and
-benefit expense lines, then assign percentages of that role’s total time to ministry lines.
-Linked compensation is redistributed rather than added to the budget. Each compensation
-line belongs to one role; combined payroll must first be split into separate budget lines.
-Staff percentages may total at most 100%; unassigned time stays unallocated.
+Five Budget pages read the proposed plan (connect.finance-budget-builder.v1) by the church's four
+Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go (outreach).
 
-Finance owns the metadata in `finance_settings` under `finance_mission_alignment_<year>`;
-Connect remains authoritative for the budget amounts. No payroll amounts or personnel
-records are copied. Saves verify the current budget categories, reject overallocations,
-and use a revision plus atomic compare-and-swap to prevent lost concurrent edits. Council
-drafts and existing compensation permissions are unchanged; this feature is admin-only.
+- **Line items by End** (admin only). Each expense line serves one End, is split by percent, or is
+  spread like the rest of the budget (shared costs follow everything aligned directly, staff time
+  included). Presets: even quarters, the church's building-use split, and last year's split. A short
+  reason travels with each split to the Mission report. Unaligned dollars are always shown.
+- **Staff time** (admin only, because it sits beside compensation). Each role links its existing
+  salary and benefit lines, then splits its time by a quick percentage or a typical week of
+  activities (templates for pastor, educator, musician, office and building care; "spread across
+  all four" hours follow the rest). Linked compensation is counted by time instead of on its own
+  line, never twice. A line belongs to one role, and a line split on Line items by End cannot be linked.
+- **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
+  and each role (percent only, no pay by person), the table, and the reasons for shared lines.
+- **For the congregation** (anyone who sees the budget; admins edit the slide words). Print-ready
+  slides: cents of every dollar by End, where income comes from and where it goes against this
+  year's budget, and how the budget has changed since 2022.
+- **Trends** (anyone who sees the budget). Income and expenses by year since 2022 (selectable):
+  QuickBooks actuals for closed years from connect.finance-chart-of-accounts.v1, the planner's
+  projection for the base year and the proposed plan, by board category and, optionally, each line.
+
+Saved per year in `finance_settings` under `finance_mission_alignment_<year>` (version 2). The first
+version saved on November 13, 2026 is read and converted in memory; the next save stores version 2.
+Every save is one change, checked against the page's revision and written with an atomic
+compare-and-swap. No payroll amounts or personnel records are copied.

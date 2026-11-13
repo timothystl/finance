@@ -61,6 +61,8 @@ function returnParams(form) {
   for (const key of ['asset', 'task', 'entry', 'project']) {
     if (/^\d{1,12}$/.test(String(form[`return_${key}`] || ''))) out[key] = String(form[`return_${key}`]);
   }
+  // The budget year a year-scoped page was showing (mission alignment), so an error stays on it.
+  if (/^20\d{2}$/.test(String(form.return_target || ''))) out.target = String(form.return_target);
   return out;
 }
 
