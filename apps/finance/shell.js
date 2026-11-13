@@ -65,7 +65,7 @@ import { FACILITIES_WRITERS, buildFacilitiesView, isoDay, readFacilities } from 
 import { canEditFacilities, describeFacilitiesStatus, ensureFacilitiesSchema, handleFacilitiesWrite } from './facilities-routes.js';
 import { serveFacilityFile } from './facility-files.js';
 import { FormValidationError } from './form-fields.js';
-import { MISSION_LIVE_JS, readMission, saveMission, canManageMission } from './mission-alignment.js';
+import { MISSION_LIVE_JS, readMission, saveMission, canManageMission, plannerWorkers } from './mission-alignment.js';
 import { MISSION_STYLES } from './mission-ui.js';
 import { renderMissionPage, renderStaffTimePage } from './mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage } from './mission-visuals.js';
@@ -97,7 +97,7 @@ import {
   postConnectChurchMonthlyXlsxImport, postConnectChurchActivityXlsxImport, postConnectChurchBudgetMultiYearXlsxImport,
   fetchLiveFinanceChurchReport, defaultLiveChurchReportFiscalYear,
 } from './finance-church-report-client.js';
-import { projectCompensation, centralDateParts } from './compensation-projection.js';
+import { projectCompensation, centralDateParts, normalizeCompensationPlan } from './compensation-projection.js';
 import { defaultCompensationTargetYear } from './compensation-editor-pages.js';
 import {
   postConnectFinanceDaycareEntry, postConnectDaycareAllocationConfigWrite, postConnectDaycareBudgetOverrideWrite,
@@ -813,6 +813,17 @@ async function buildCompensationProjection(env, saved, { targetYear, councilView
   } catch (error) {
     return { ok: false, message: error?.message || String(error) };
   }
+}
+
+// The compensation planner's staff for the allocation tool (Budget › Staff time), projected for the
+// budget year: read as the signed-in admin through Connect, never stored. null when it cannot be read.
+async function loadPlannerWorkers(env, accessJwt, targetYear) {
+  const plan = await fetchConnectSalaryPlannerState(env, accessJwt);
+  if (!plan.ok) return null;
+  if (!plan.data) return [];
+  const projection = await buildCompensationProjection(env, plan.data, { targetYear, councilView: false });
+  if (!projection.ok) return null;
+  return plannerWorkers({ computed: projection.computed, roster: normalizeCompensationPlan(plan.data, targetYear).roster });
 }
 
 // Same shape as describeBudgetEntryError above, for postConnectFinanceCompensationWrite() /
@@ -1827,7 +1838,7 @@ function renderSectionBody(ctx) {
       const prior = ctx.missionPrior && !isSyntheticUnavailable(ctx.missionPrior) ? ctx.missionPrior : null;
       return renderMissionPage({ ...shared, prior, canEdit: true });
     }
-    if (page.id === 'staff-time') return renderStaffTimePage({ ...shared, canEdit: admin });
+    if (page.id === 'staff-time') return renderStaffTimePage({ ...shared, canEdit: admin, workers: ctx.plannerWorkers });
     if (page.id === 'mission-report') return renderMissionReportPage({ ...shared, admin });
     const trend = ctx.budgetTrend && !isSyntheticUnavailable(ctx.budgetTrend) ? ctx.budgetTrend : null;
     if (page.id === 'congregation') return renderCongregationPage({ ...shared, trend, canEdit: admin });
@@ -4043,7 +4054,8 @@ export default {
           if (!Number.isInteger(target) || target < 2001 || target > 2099 || !Number.isInteger(base) || base < 2000 || base >= target) throw new FormValidationError('Choose valid budget years.');
           const result = await fetchBudgetBuilder(env, target, base);
           if (!result.ok) throw new FormValidationError('The current budget could not be loaded. Try again.');
-          return saveMission(db, form, actor, result.builder);
+          const workers = form.action === 'staff-import' ? await loadPlannerWorkers(env, request.headers.get('Cf-Access-Jwt-Assertion') || '', target) : undefined;
+          return saveMission(db, form, actor, result.builder, { workers });
         } },
       });
     }
@@ -4505,6 +4517,8 @@ export default {
         const missionReads = missionPage && missionPage !== 'trends' && (!['mission', 'staff-time'].includes(missionPage) || (!councilPreview && canManageMission(roleResult)));
         const missionLoad = missionReads
           ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear)) : null) : null;
+        const plannerWorkersLoad = missionPage === 'staff-time' && missionReads
+          ? after(budgetBuilder, (result) => (result?.ok ? loadPlannerWorkers(env, accessJwt, result.builder.targetYear).catch(() => null) : null)) : null;
         const missionPriorLoad = missionPage === 'mission' && missionReads
           ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear - 1)) : null) : null;
         // A council member sees their own Plan draft, read back through Connect as themselves.
@@ -4962,7 +4976,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          missionAlignment: await missionLoad, missionPrior: await missionPriorLoad, budgetTrend: await budgetTrendLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          missionAlignment: await missionLoad, missionPrior: await missionPriorLoad, plannerWorkers: await plannerWorkersLoad, budgetTrend: await budgetTrendLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,

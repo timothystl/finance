@@ -25,7 +25,7 @@ const fail = (message) => { throw new FormValidationError(message); };
 const sum = (v) => v.reduce((a, b) => a + b, 0);
 export const lineCents = (line) => line?.plan?.plannedAmountCents || 0;
 export const expenseLines = (builder) => builder.lines.filter((l) => l.classification !== 'Income');
-export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], buildingUse: null, story: { bullets: [[], [], [], []], note: '' } });
+export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], note: '' } });
 
 // ── Reading and normalizing ──────────────────────────────────────────────────────────────────
 
@@ -69,8 +69,10 @@ export function normalizeMission(raw) {
       week: (Array.isArray(person.week) ? person.week : []).filter((w) => w && Number.isInteger(w.hours) && w.hours >= 0)
         .map((w) => ({ activity: String(w.activity || '').slice(0, 80), hours: w.hours, end: w.end === 'spread' ? 'spread' : (Number.isInteger(w.end) && w.end >= 0 && w.end < 4 ? w.end : 'spread') })),
       reviewed: Boolean(person.reviewed),
+      ...plannerFields(person),
     });
   }
+  out.benefitLines = Array.isArray(raw.benefitLines) ? [...new Set(raw.benefitLines.map(String))].slice(0, 200) : [];
   if (isShares(raw.buildingUse) && sum(raw.buildingUse) === FULL) out.buildingUse = [...raw.buildingUse];
   const bullets = raw.story?.bullets;
   if (Array.isArray(bullets) && bullets.length === 4) out.story.bullets = bullets.map((b) => (Array.isArray(b) ? b.map((s) => String(s).slice(0, 80)).filter(Boolean).slice(0, 6) : []));
@@ -84,6 +86,18 @@ export async function readMission(db, year) {
   const value = JSON.parse(row.value);
   if (!value || typeof value !== 'object' || !Number.isInteger(value.revision)) throw new Error('Invalid mission settings');
   return { ...normalizeMission(value), stored: row.value };
+}
+
+// A role brought in from the compensation planner keeps who it is there (name and position, for
+// matching on the next refresh) and its share of the staff benefit lines, in basis points. No pay
+// amount is stored: the dollars always come from the budget plan's own lines.
+function plannerFields(person) {
+  if (typeof person.planKey !== 'string' || !person.planKey) return {};
+  return {
+    planKey: person.planKey.slice(0, 80), name: String(person.name || '').slice(0, 80), position: String(person.position || '').slice(0, 80),
+    benefitWeight: Number.isInteger(person.benefitWeight) && person.benefitWeight >= 0 ? Math.min(FULL, person.benefitWeight) : 0,
+    councilHidden: Boolean(person.councilHidden),
+  };
 }
 
 // ── Arithmetic ───────────────────────────────────────────────────────────────────────────────
@@ -127,25 +141,37 @@ export const staffShares = (person) => (person.mode === 'week' ? weekShares(pers
 
 // ── The model every page reads ───────────────────────────────────────────────────────────────
 
+const BENEFITS_OWNER = '__benefits__';
+
 export function missionModel(builder, data) {
   const lines = expenseLines(builder);
   const byCategory = new Map(lines.map((l) => [l.category, l]));
   const sourceOwner = new Map();
   for (const person of data.staff) for (const c of person.sources) if (byCategory.has(c) && !sourceOwner.has(c)) sourceOwner.set(c, person.id);
-  let unassigned = 0;
+  // Staff benefit lines (health, pension, FICA...) are pooled in the budget, not kept per person:
+  // they are shared among the roles by each one's benefit share from the compensation planner, or,
+  // without planner shares, in proportion to each role's own linked pay.
+  const benefitLines = (data.benefitLines || []).filter((c) => byCategory.has(c) && !sourceOwner.has(c));
+  for (const c of benefitLines) sourceOwner.set(c, BENEFITS_OWNER);
+  const benefitPool = sum(benefitLines.map((c) => lineCents(byCategory.get(c))));
+  const ownPay = data.staff.map((person) => sum(person.sources.filter((c) => sourceOwner.get(c) === person.id).map((c) => lineCents(byCategory.get(c)))));
+  const plannerWeights = data.staff.map((p) => p.benefitWeight || 0);
+  const benefitParts = benefitPool ? distribute(benefitPool, sum(plannerWeights) ? plannerWeights : ownPay.map((v) => Math.max(0, v))) : data.staff.map(() => 0);
+  let unassigned = data.staff.length && sum(benefitParts) === benefitPool ? 0 : benefitPool;
   const staffTotals = [0, 0, 0, 0];
-  const staff = data.staff.map((person) => {
-    const pool = sum(person.sources.filter((c) => sourceOwner.get(c) === person.id).map((c) => lineCents(byCategory.get(c))));
+  const staff = data.staff.map((person, index) => {
+    const benefitShare = data.staff.length && sum(benefitParts) === benefitPool ? benefitParts[index] : 0;
+    const pool = ownPay[index] + benefitShare;
     const shares = staffShares(person);
     const parts = apportion(pool, [...shares, FULL - sum(shares)]);
     parts.slice(0, 4).forEach((p, i) => { staffTotals[i] += p; });
     unassigned += parts[4];
-    return { ...person, pool, shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week) };
+    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week) };
   });
   const programTotals = [0, 0, 0, 0];
   const rows = lines.map((line) => {
     const cents = lineCents(line);
-    if (sourceOwner.has(line.category)) return { line, cents, isSource: true, ownerId: sourceOwner.get(line.category) };
+    if (sourceOwner.has(line.category)) return { line, cents, isSource: true, ownerId: sourceOwner.get(line.category), isBenefit: sourceOwner.get(line.category) === BENEFITS_OWNER };
     const entry = data.lines[line.category] || null;
     const method = entry?.method || null;
     const shares = entry && method !== 'spread' ? entry.shares : [0, 0, 0, 0];
@@ -175,7 +201,7 @@ export function missionModel(builder, data) {
   const staffPool = sum(staff.map((s) => s.pool));
   return {
     rows, staff, totals, staffTotals, programTotals, unassigned,
-    total: sum(lines.map(lineCents)), staffPool, programTotal: sum(programRows.map((r) => r.cents)),
+    total: sum(lines.map(lineCents)), staffPool, benefitPool, benefitLines, programTotal: sum(programRows.map((r) => r.cents)),
     needsCount: needs.length, needsCents: sum(needs.map((r) => r.unassigned || 0)),
     unlinkedStaff: staff.filter((s) => !s.pool).length,
   };
@@ -213,7 +239,7 @@ export function applyLine(data, form, builder) {
   const category = String(form.category || '');
   const line = expenseLines(builder).find((l) => l.category === category);
   if (!line) fail('That budget line is not in this year’s plan. Reload and try again.');
-  if (data.staff.some((s) => s.sources.includes(category))) fail('This line is staff compensation. Set it on the Staff time page.');
+  if (data.staff.some((s) => s.sources.includes(category)) || (data.benefitLines || []).includes(category)) fail('This line is staff compensation. Set it on the Staff time page.');
   const note = String(form.note || '').trim();
   if (note.length > MAX_NOTE) fail(`Keep the reason to ${MAX_NOTE} characters.`);
   const method = String(form.method || '');
@@ -249,6 +275,7 @@ export function applyStaff(data, form, builder) {
   for (const c of sources) {
     if (data.staff.some((s, i) => i !== index && s.sources.includes(c))) fail('A compensation line can belong to only one staff role. Split combined payroll into separate budget lines first.');
     if (data.lines[c]) fail(`${c} already has its own mission split on the Mission alignment page. Clear it there before linking it to a staff role.`);
+    if ((data.benefitLines || []).includes(c)) fail(`${c} is a shared staff benefit line. Untick it under shared benefit lines first.`);
     if (lineCents(lines.find((l) => l.category === c)) < 0) fail('Compensation lines must have nonnegative planned amounts.');
   }
   const mode = form.mode === 'week' ? 'week' : 'quick';
@@ -295,12 +322,120 @@ export function applyStory(data, form) {
   return { data: { ...data, story: { bullets, note } }, params: {} };
 }
 
+// ── Bringing staff in from the compensation planner ──────────────────────────────────────────
+
+// Every church staff benefit and payroll-cost line, so a person's full cost follows their time.
+// Mother's Day Out payroll lines are its own program and stay out.
+const BENEFIT_LINE_RE = /health|medical|dental|vision|disabilit|pension|retirement|\bfica\b|social security|payroll tax|payroll processing|workers?.? ?comp|mileage|professional development|continuing ed/i;
+const PAY_LINE_RE = /salar|wage|housing|stipend/i;
+const MDO_RE = /\bMDO\b|mother.?s day out/i;
+const plannerKey = (w) => `plan:${String(w.name || '').trim().toLowerCase()}`;
+
+// The compensation planner's roster, projected for the budget year, as the allocation tool needs
+// it: who, their position, typical hours, the budget line their pay is charged to, and their
+// projected benefit cost (used only to weigh the shared benefit lines). Workers paid from another
+// budget are left out because their pay is not in this budget.
+export function plannerWorkers({ computed, roster } = {}) {
+  if (!Array.isArray(computed) || !Array.isArray(roster)) return null;
+  const entries = roster.map((w, i) => ({ w, c: computed[i] }));
+  return entries
+    .filter(({ w }) => w && String(w.name || '').trim() && !w.externallyFunded).map(({ c, w }) => {
+    const fte = Number(w.ftePct);
+    return {
+      key: plannerKey(w), name: String(w.name).trim().slice(0, 80), position: String(w.position || '').trim().slice(0, 80),
+      accountCode: String(w.accountCode || '').trim(), hours: Number.isFinite(fte) && fte > 0 ? Math.round(fte * 40) : null,
+      benefitsCents: Math.max(0, c?.benefits?.totalCents || 0), churchCostCents: Math.max(0, c?.churchCostCents || 0),
+      councilHidden: Boolean(w.hideFromCouncil),
+    };
+  });
+}
+
+// The budget line a worker's pay is charged to: the planner's account code found in the line's
+// QuickBooks path or name.
+export function payLinesFor(worker, lines) {
+  if (!worker.accountCode) return [];
+  return lines.filter((l) => `${l.category} ${l.name || ''}`.includes(worker.accountCode)).map((l) => l.category);
+}
+
+export function suggestedBenefitLines(data, builder) {
+  const owned = new Set(data.staff.flatMap((s) => s.sources));
+  return expenseLines(builder).filter((l) => !owned.has(l.category) && !data.lines[l.category] && BENEFIT_LINE_RE.test(`${l.category} ${l.name || ''}`) && !PAY_LINE_RE.test(l.name || '') && !MDO_RE.test(`${l.category} ${l.name || ''}`)).map((l) => l.category);
+}
+
+export function importStaff(data, form, builder, { workers } = {}) {
+  if (!Array.isArray(workers)) fail('The compensation planner could not be read just now. Nothing was changed; try again.');
+  if (!workers.length) fail('The compensation planner has no staff paid from this budget yet.');
+  const lines = expenseLines(builder);
+  const staff = data.staff.map((s) => ({ ...s, sources: [...s.sources] }));
+  const owned = new Set(staff.flatMap((s) => s.sources));
+  const totalBenefits = sum(workers.map((w) => w.benefitsCents));
+  const weights = totalBenefits ? distribute(FULL, workers.map((w) => w.benefitsCents)) : workers.map(() => 0);
+  let added = 0;
+  workers.forEach((w, i) => {
+    const payLines = payLinesFor(w, lines);
+    // A role set up by hand (or from the budget narrative) that already holds this person's pay
+    // line is the same person: it is adopted rather than duplicated.
+    let person = staff.find((s) => s.planKey === w.key) || staff.find((s) => !s.planKey && payLines.some((c) => s.sources.includes(c)));
+    if (!person) {
+      if (staff.length >= 30) fail('A year can have up to 30 staff roles.');
+      person = { id: crypto.randomUUID(), label: (w.position || w.name).slice(0, 60), hours: null, sources: [], mode: 'quick', shares: [0, 0, 0, 0], week: [], reviewed: false };
+      staff.push(person);
+      added += 1;
+    }
+    Object.assign(person, { planKey: w.key, name: w.name, position: w.position, benefitWeight: weights[i], councilHidden: w.councilHidden });
+    if (person.hours == null && w.hours) person.hours = w.hours;
+    for (const c of payLines) {
+      if (owned.has(c) || data.lines[c] || (data.benefitLines || []).includes(c)) continue;
+      person.sources.push(c); owned.add(c);
+    }
+  });
+  const next = { ...data, staff };
+  if (!(data.benefitLines || []).length) next.benefitLines = suggestedBenefitLines(next, builder);
+  return { data: next, params: { imported: String(added) } };
+}
+
+export function applyBenefitLines(data, form, builder) {
+  const lines = expenseLines(builder);
+  const chosen = [];
+  for (let i = 0; i < lines.length; i += 1) if (form[`benefit_${i}`] === lines[i].category) chosen.push(lines[i].category);
+  for (const c of chosen) {
+    if (data.staff.some((s) => s.sources.includes(c))) fail(`${c} is already linked to one staff role.`);
+    if (data.lines[c]) fail(`${c} already has its own mission split. Clear it on Line items by End first.`);
+  }
+  return { data: { ...data, benefitLines: chosen }, params: {} };
+}
+
+// Percentages typed straight into the Line items table. Only rows whose figures changed from what
+// the page showed are touched; each keeps its reason. A row typed back to all blanks is cleared.
+export function applyLines(data, form, builder) {
+  const lines = new Map(expenseLines(builder).map((l) => [l.category, l]));
+  const next = { ...data.lines };
+  let changed = 0;
+  for (let i = 0; i < 2000 && form[`row_${i}`] !== undefined; i += 1) {
+    const category = String(form[`row_${i}`]);
+    const shares = GOAL_KEYS.map((g) => percent(form[`cell_${i}_${g}`]));
+    if (shares.join(',') === String(form[`orig_${i}`] || '')) continue;
+    const line = lines.get(category);
+    if (!line) fail('The budget lines changed. Reload and try again.');
+    if (data.staff.some((s) => s.sources.includes(category)) || (data.benefitLines || []).includes(category)) fail('Staff compensation lines are set on the Staff time page.');
+    if (sum(shares) > FULL) fail(`The shares for ${line.name || category} add up to more than 100%.`);
+    const note = next[category]?.note || '';
+    if (!sum(shares)) delete next[category];
+    else next[category] = { method: onlyEnd(shares) >= 0 ? 'one' : 'split', shares, note };
+    changed += 1;
+  }
+  return { data: { ...data, lines: next }, params: { changed: String(changed) } };
+}
+
 const ACTIONS = {
+  lines: { run: applyLines, page: 'mission' },
   line: { run: applyLine, page: 'mission' },
   building: { run: applyBuildingUse, page: 'mission' },
   staff: { run: applyStaff, page: 'staff-time' },
   'staff-add': { run: addStaff, page: 'staff-time' },
   'staff-remove': { run: removeStaff, page: 'staff-time' },
+  'staff-import': { run: importStaff, page: 'staff-time' },
+  'staff-benefits': { run: applyBenefitLines, page: 'staff-time' },
   story: { run: applyStory, page: 'congregation' },
 };
 
@@ -311,7 +446,7 @@ function yearValue(raw) {
 
 // One change per post, checked against the revision the page was drawn from, then written with an
 // atomic compare-and-swap so two people saving at once never lose each other's work.
-export async function saveMission(db, form, actor, builder) {
+export async function saveMission(db, form, actor, builder, extras = {}) {
   const action = ACTIONS[form.action];
   if (!action) fail('That change could not be understood. Reload and try again.');
   const year = yearValue(form.target);
@@ -319,7 +454,7 @@ export async function saveMission(db, form, actor, builder) {
   const data = await readMission(db, year);
   if (String(data.revision) !== String(form.revision)) fail('Someone else saved mission alignment just now. Reload before editing again.');
   const { stored, ...current } = data;
-  const result = action.run(current, form, builder);
+  const result = action.run(current, form, builder, extras);
   const output = { ...result.data, version: 2, revision: data.revision + 1, updatedBy: String(actor || '') };
   const value = JSON.stringify(output);
   const write = stored === null
@@ -377,6 +512,39 @@ export function missionLive() {
     }));
     update();
   });
+  const cellsForm = document.getElementById('ma-cells');
+  if (cellsForm) {
+    const status = cellsForm.querySelector('[data-cells-status]');
+    const cells = Array.from(document.querySelectorAll('input[data-cell-row]'));
+    const rowOf = (n) => cells.filter((c) => c.dataset.cellRow === n);
+    const updateRow = (n) => {
+      const inputs = rowOf(n);
+      const shares = inputs.map(pct);
+      const total = shares.reduce((a, b) => a + b, 0);
+      const orig = (document.querySelector('input[name="orig_' + n + '"]') || {}).value || '';
+      inputs.forEach((el, i) => {
+        el.classList.toggle('is-changed', shares.join(',') !== orig);
+        el.classList.toggle('is-over', total > FULL);
+        el.setCustomValidity(total > FULL && i === 0 ? 'This line’s shares add up to more than 100%.' : '');
+      });
+      const tr = document.querySelector('tr[data-row="' + n + '"]');
+      if (tr && total) paint(tr.querySelector('.ma-bar'), shares);
+    };
+    const refresh = () => {
+      const changed = new Set(cells.filter((c) => c.classList.contains('is-changed')).map((c) => c.dataset.cellRow)).size;
+      const over = new Set(cells.filter((c) => c.classList.contains('is-over')).map((c) => c.dataset.cellRow)).size;
+      cellsForm.classList.toggle('is-dirty', changed > 0);
+      if (status) status.textContent = over ? over + (over === 1 ? ' line adds' : ' lines add') + ' up to more than 100%.' : changed ? changed + (changed === 1 ? ' line' : ' lines') + ' changed, not saved yet.' : 'Click any Welcome, Receive, Grow or Go cell to type a percentage.';
+    };
+    cells.forEach((el) => {
+      el.addEventListener('input', () => { updateRow(el.dataset.cellRow); refresh(); });
+      el.addEventListener('focus', () => el.select());
+      el.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); cellsForm.requestSubmit(); } });
+    });
+    cellsForm.addEventListener('submit', (event) => { if (!cellsForm.reportValidity()) event.preventDefault(); });
+    window.addEventListener('beforeunload', (event) => { if (cellsForm.classList.contains('is-dirty') && !cellsForm.dataset.sending) event.preventDefault(); });
+    cellsForm.addEventListener('submit', () => { cellsForm.dataset.sending = '1'; });
+  }
   document.querySelectorAll('form[data-ma-week]').forEach((form) => {
     const cents = Number(form.dataset.cents || 0);
     const target = Number(form.dataset.hours || 0);

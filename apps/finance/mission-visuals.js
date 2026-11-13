@@ -11,7 +11,7 @@ import { trendHeadline, wholeChart, change } from './budget-trends.js';
 const FULL = 10000;
 const shareOf = (parts) => (sum(parts) > 0 ? distribute(FULL, parts.map((p) => Math.max(0, p))) : [0, 0, 0, 0]);
 
-const staffBullet = (people) => (people.length === 1 ? `${people[0].label}’s time` : `Staff time, most from the ${people[0].label}`);
+const staffBullet = (people) => (!people.length ? 'Staff time' : people.length === 1 ? `${people[0].label}’s time` : `Staff time, most from the ${people[0].label}`);
 
 // Top contributors to each End, used when no words have been written for the slide.
 export function autoBullets(model, layout) {
@@ -19,7 +19,7 @@ export function autoBullets(model, layout) {
   return MISSION_GOALS.map((_, i) => {
     const items = [
       ...model.rows.filter((r) => !r.isSource && r.parts?.[i] > 0).map((r) => ({ label: accountDisplayName(lay, r.line.category, r.line.name), cents: r.parts[i] })),
-      ...(model.staffTotals[i] > 0 ? [{ label: staffBullet(model.staff.filter((s) => s.parts[i] > 0).sort((a, b) => b.parts[i] - a.parts[i])), cents: model.staffTotals[i] }] : []),
+      ...(model.staffTotals[i] > 0 ? [{ label: staffBullet(model.staff.filter((s) => s.parts[i] > 0 && !s.councilHidden).sort((a, b) => b.parts[i] - a.parts[i])), cents: model.staffTotals[i] }] : []),
     ];
     return items.sort((a, b) => b.cents - a.cents).slice(0, 4).map((x) => x.label);
   });
@@ -139,7 +139,7 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
   const programs = shareOf(model.programTotals);
   const programPool = model.total - model.staffPool;
   const leg = (shares, amounts) => `<div class="cv-leg">${MISSION_GOALS.map(([, l], i) => `<div><span class="cv-sw" style="background:${PRESENT_COLORS[i]}"></span>${l}<span class="num">${amounts ? money(amounts[i]) : ''}</span><strong class="num">${pct0(shares[i])}</strong></div>`).join('')}</div>`;
-  const people = model.staff.filter((s) => sum(s.shares) > 0);
+  const people = model.staff.filter((s) => sum(s.shares) > 0 && (admin || !s.councilHidden));
   const notes = model.rows.filter((r) => !r.isSource && (r.note || r.status === 'spread' || r.status === 'split'));
   const methodText = (r) => (r.status === 'spread' ? 'Like the rest of the budget' : MISSION_GOALS.map(([, l], i) => (r.shares[i] ? `${l} ${pct0(r.shares[i])}` : '')).filter(Boolean).join(' · '));
   return `${head}<section class="cv-slide" aria-label="Mission alignment report"><div class="cv-rule"></div><div class="cv-body">

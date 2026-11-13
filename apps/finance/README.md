@@ -84,12 +84,21 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
 - **Line items by End** (admin only). Each expense line serves one End, is split by percent, or is
   spread like the rest of the budget (shared costs follow everything aligned directly, staff time
   included). Presets: even quarters, the church's building-use split, and last year's split. A short
-  reason travels with each split to the Mission report. Unaligned dollars are always shown.
+  reason travels with each split to the Mission report. Unaligned dollars are always shown. In the
+  Percent view an admin can type straight into the Welcome/Receive/Grow/Go cells and save every
+  changed row at once; only rows that changed are written, and each keeps its reason.
 - **Staff time** (admin only, because it sits beside compensation). Each role links its existing
   salary and benefit lines, then splits its time by a quick percentage or a typical week of
   activities (templates for pastor, educator, musician, office and building care; "spread across
   all four" hours follow the rest). Linked compensation is counted by time instead of on its own
   line, never twice. A line belongs to one role, and a line split on Line items by End cannot be linked.
+  "Bring in staff from the compensation planner" reads the planner's roster (as the signed-in admin,
+  projected for the budget year; workers paid from another budget are left out) and adds a role per
+  person with their position and usual hours, linking the budget line whose path or name holds the
+  worker's account code. Shared benefit lines (health, pension, disability, FICA) are pooled and
+  divided by each person's projected benefits in the planner, stored only as a share in basis
+  points; dollars always come from the budget plan. Refreshing keeps time splits; a person no longer
+  in the planner is flagged, not removed. Roles hidden from council stay out of council's per-role pies.
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
   and each role (percent only, no pay by person), the table, and the reasons for shared lines.
 - **For the congregation** (anyone who sees the budget; admins edit the slide words). Print-ready

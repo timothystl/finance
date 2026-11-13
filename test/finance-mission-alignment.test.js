@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  apportion, applyLine, applyStaff, addStaff, applyStory, missionModel, normalizeMission, saveMission, weekShares, emptyMission, canManageMission,
+  apportion, applyLine, applyLines, applyStaff, addStaff, applyStory, missionModel, normalizeMission, saveMission, weekShares, emptyMission, canManageMission,
+  importStaff, plannerWorkers, applyBenefitLines,
 } from '../apps/finance/mission-alignment.js';
 import { renderMissionPage, renderStaffTimePage } from '../apps/finance/mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage } from '../apps/finance/mission-visuals.js';
@@ -112,6 +113,65 @@ describe('mission edits', () => {
   });
 });
 
+describe('typing percentages into the table', () => {
+  it('changes only edited rows, keeps their reason, clears blanked rows and refuses staff lines', () => {
+    const data = state(); data.lines['Expenses:Worship'].note = 'Sunday';
+    const form = { row_0: 'Expenses:Hospitality', orig_0: '10000,0,0,0', cell_0_welcome: '100', row_1: 'Expenses:Worship', orig_1: '0,10000,0,0', cell_1_receive: '80', cell_1_grow: '20', row_2: 'Expenses:Utilities', orig_2: '0,0,0,0', cell_2_go: '100' };
+    const next = applyLines(data, form, builder);
+    expect(next.params.changed).toBe('2');
+    expect(next.data.lines['Expenses:Worship']).toEqual({ method: 'split', shares: [0, 8000, 2000, 0], note: 'Sunday' });
+    expect(next.data.lines['Expenses:Utilities']).toEqual({ method: 'one', shares: [0, 0, 0, 10000], note: '' });
+    expect(applyLines(data, { row_0: 'Expenses:Hospitality', orig_0: '10000,0,0,0' }, builder).data.lines['Expenses:Hospitality']).toBeUndefined();
+    expect(() => applyLines(data, { row_0: 'Expenses:Utilities', orig_0: '0,0,0,0', cell_0_welcome: '70', cell_0_go: '40' }, builder)).toThrow(/more than 100/);
+    expect(() => applyLines(data, { row_0: 'Expenses:Salary', orig_0: '0,0,0,0', cell_0_go: '10' }, builder)).toThrow(/Staff time/);
+  });
+});
+
+describe('staff from the compensation planner', () => {
+  const plan = {
+    roster: [{ name: 'Dinger', position: 'Senior Pastor', accountCode: '58001', ftePct: 100 }, { name: 'Knapp', position: 'Director of Christian Education', accountCode: '58002', ftePct: 50, hideFromCouncil: true }, { name: 'Away', position: 'Preschool', externallyFunded: true }],
+    computed: [{ churchCostCents: 9000000, benefits: { totalCents: 3000000 } }, { churchCostCents: 4000000, benefits: { totalCents: 1000000 } }, { churchCostCents: 1, benefits: { totalCents: 1 } }],
+  };
+  const b = { targetYear: 2027, baseYear: 2026, lines: [line('Expenses:Salaries:58001 Pastor Salary', 6000000), line('Expenses:Salaries:58002 DCE Salary', 3000000), line('Expenses:Staff:Health Insurance', 2400000), line('Expenses:Staff:Pension', 1600000), line('Expenses:Worship', 500000), line('Expenses:57 MDO Expenses:57162 MDO Payroll Taxes', 3000000)] };
+  it('reads the roster without anyone paid from another budget', () => {
+    const workers = plannerWorkers(plan);
+    expect(workers.map((w) => w.position)).toEqual(['Senior Pastor', 'Director of Christian Education']);
+    expect(workers[1]).toMatchObject({ hours: 2000, councilHidden: true });
+    expect(plannerWorkers({})).toBeNull();
+  });
+  it('adds a role per person, links their pay line, finds the shared benefit lines, and refreshes without losing splits', () => {
+    const workers = plannerWorkers(plan);
+    const first = importStaff(emptyMission(), {}, b, { workers });
+    expect(first.params.imported).toBe('2');
+    const [pastor, dce] = first.data.staff;
+    expect(pastor).toMatchObject({ label: 'Senior Pastor', name: 'Dinger', sources: ['Expenses:Salaries:58001 Pastor Salary'], hours: 4000, benefitWeight: 7500 });
+    expect(dce.benefitWeight).toBe(2500);
+    expect(first.data.benefitLines).toEqual(['Expenses:Staff:Health Insurance', 'Expenses:Staff:Pension']);
+    const m = missionModel(b, first.data);
+    expect(m.staff.map((s) => s.pool)).toEqual([6000000 + 3000000, 3000000 + 1000000]);
+    expect(m.staffPool).toBe(13000000);
+    expect(m.rows.filter((r) => !r.isSource).map((r) => r.line.category)).toEqual(['Expenses:Worship', 'Expenses:57 MDO Expenses:57162 MDO Payroll Taxes']);
+    const edited = { ...first.data, staff: first.data.staff.map((s, i) => (i === 0 ? { ...s, shares: [2000, 4000, 3000, 1000], reviewed: true } : s)) };
+    const again = importStaff(edited, {}, b, { workers });
+    expect(again.params.imported).toBe('0');
+    expect(again.data.staff[0]).toMatchObject({ shares: [2000, 4000, 3000, 1000], reviewed: true });
+    expect(() => importStaff(emptyMission(), {}, b, { workers: null })).toThrow(/could not be read/);
+    const byHand = { ...emptyMission(), staff: [{ id: 'h', label: 'Lead Pastor', hours: null, sources: ['Expenses:Salaries:58001 Pastor Salary'], mode: 'quick', shares: [2500, 2500, 2500, 2500], week: [], reviewed: true }] };
+    const adopted = importStaff(byHand, {}, b, { workers });
+    expect(adopted.params.imported).toBe('1');
+    expect(adopted.data.staff[0]).toMatchObject({ id: 'h', label: 'Lead Pastor', planKey: 'plan:dinger', shares: [2500, 2500, 2500, 2500] });
+    expect(applyBenefitLines(first.data, { benefit_2: 'Expenses:Staff:Health Insurance' }, b).data.benefitLines).toEqual(['Expenses:Staff:Health Insurance']);
+    expect(() => applyLine(first.data, { category: 'Expenses:Staff:Pension', method: 'one', end: 'go' }, b)).toThrow(/Staff time/);
+  });
+  it('shows the planner panel on Staff time', () => {
+    const data = importStaff(emptyMission(), {}, b, { workers: plannerWorkers(plan) }).data;
+    const html = renderStaffTimePage({ builder: b, data, params: new URLSearchParams(), canEdit: true, workers: plannerWorkers(plan) });
+    expect(html).toContain('Refresh staff from the compensation planner');
+    expect(html).toContain('all brought in');
+    expect(renderStaffTimePage({ builder: b, data: emptyMission(), params: new URLSearchParams(), canEdit: true, workers: plannerWorkers(plan) })).toContain('Bring in staff from the compensation planner');
+  });
+});
+
 describe('mission pages', () => {
   const params = (q = '') => new URLSearchParams(q);
   it('lists lines by End with a drawer and escapes names and notes', () => {
@@ -121,6 +181,9 @@ describe('mission pages', () => {
     expect(html).toContain('Not yet aligned');
     expect(html).toContain('Staff salaries &amp; benefits');
     expect(html).toContain('Apply to line');
+    expect(html).toContain('name="cell_0_welcome" form="ma-cells"');
+    expect(html).toContain('Save percentages');
+    expect(renderMissionPage({ builder, data, params: params('as=usd'), canEdit: true })).not.toContain('Save percentages');
     expect(html).toContain('name="share_welcome" data-share inputmode="decimal" value="25"');
     expect(html).not.toContain('<script>x');
     expect(html).toContain('&lt;script&gt;');

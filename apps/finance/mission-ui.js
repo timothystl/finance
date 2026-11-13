@@ -105,6 +105,15 @@ export const MISSION_STYLES = `
   .ma-presets { display:flex; flex-wrap:wrap; gap:8px; }
   .ma-presets .button-outline, .ma-presets a { min-height:34px; font-size:14px; padding:6px 12px; }
   .ma-actions a { align-self:center; }
+  .ma-cellwrap { padding:4px 6px !important; }
+  .ma-cell { width:62px; box-sizing:border-box; text-align:right; border:1px solid transparent; background:transparent; border-radius:6px; padding:6px 6px; font-variant-numeric:tabular-nums; font-size:14px; }
+  .ma-cell:hover { border-color:#C7D3DB; background:#fff; }
+  .ma-cell:focus { border-color:#386781; background:#fff; outline:2px solid #DFEBF2; }
+  .ma-cell.is-changed { background:#FFF9EC; border-color:#E8C77A; }
+  .ma-cell:invalid, .ma-cell.is-over { border-color:#B5412F; background:#FBEAE6; }
+  .ma-cell::placeholder { color:#9AA8B2; }
+  .ma-savebar { position:sticky; bottom:0; z-index:2; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:12px 14px; background:#fff; border:1px solid #D7E2E9; border-radius:12px; box-shadow:0 -4px 14px rgba(22,33,58,.06); }
+  .ma-savebar.is-dirty { border-color:#E8C77A; background:#FFF9EC; }
   .ma-table td:first-child { min-width:200px; }
   .ma-actions { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
   .ma-panel { border:1px solid #D7E2E9; border-radius:12px; padding:22px; background:#fff; display:flex; flex-direction:column; gap:16px; }
