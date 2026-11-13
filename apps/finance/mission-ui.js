@@ -106,8 +106,8 @@ export const MISSION_STYLES = `
   .ma-presets .button-outline, .ma-presets a { min-height:34px; font-size:14px; padding:6px 12px; }
   .ma-actions a { align-self:center; }
   .ma-cellwrap { padding:4px 6px !important; }
-  .ma-cell { width:62px; box-sizing:border-box; text-align:right; border:1px solid transparent; background:transparent; border-radius:6px; padding:6px 6px; font-variant-numeric:tabular-nums; font-size:14px; }
-  .ma-cell:hover { border-color:#C7D3DB; background:#fff; }
+  .ma-cell { width:62px; box-sizing:border-box; text-align:right; border:1px solid #C7D3DB; background:#fff; border-radius:6px; padding:6px 6px; font-variant-numeric:tabular-nums; font-size:14px; }
+  .ma-cell:hover { border-color:#718694; }
   .ma-cell:focus { border-color:#386781; background:#fff; outline:2px solid #DFEBF2; }
   .ma-cell.is-changed { background:#FFF9EC; border-color:#E8C77A; }
   .ma-cell:invalid, .ma-cell.is-over { border-color:#B5412F; background:#FBEAE6; }

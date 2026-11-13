@@ -69,6 +69,7 @@ export function normalizeMission(raw) {
       week: (Array.isArray(person.week) ? person.week : []).filter((w) => w && Number.isInteger(w.hours) && w.hours >= 0)
         .map((w) => ({ activity: String(w.activity || '').slice(0, 80), hours: w.hours, end: w.end === 'spread' ? 'spread' : (Number.isInteger(w.end) && w.end >= 0 && w.end < 4 ? w.end : 'spread') })),
       reviewed: Boolean(person.reviewed),
+      lineTime: lineTimeFrom(person.lineTime),
       ...plannerFields(person),
     });
   }
@@ -86,6 +87,17 @@ export async function readMission(db, year) {
   const value = JSON.parse(row.value);
   if (!value || typeof value !== 'object' || !Number.isInteger(value.revision)) throw new Error('Invalid mission settings');
   return { ...normalizeMission(value), stored: row.value };
+}
+
+function lineTimeFrom(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  let total = 0;
+  for (const [c, bp] of Object.entries(raw)) {
+    if (!Number.isInteger(bp) || bp <= 0 || total + bp > FULL) continue;
+    out[String(c)] = bp; total += bp;
+  }
+  return out;
 }
 
 // A role brought in from the compensation planner keeps who it is there (name and position, for
@@ -158,16 +170,6 @@ export function missionModel(builder, data) {
   const plannerWeights = data.staff.map((p) => p.benefitWeight || 0);
   const benefitParts = benefitPool ? distribute(benefitPool, sum(plannerWeights) ? plannerWeights : ownPay.map((v) => Math.max(0, v))) : data.staff.map(() => 0);
   let unassigned = data.staff.length && sum(benefitParts) === benefitPool ? 0 : benefitPool;
-  const staffTotals = [0, 0, 0, 0];
-  const staff = data.staff.map((person, index) => {
-    const benefitShare = data.staff.length && sum(benefitParts) === benefitPool ? benefitParts[index] : 0;
-    const pool = ownPay[index] + benefitShare;
-    const shares = staffShares(person);
-    const parts = apportion(pool, [...shares, FULL - sum(shares)]);
-    parts.slice(0, 4).forEach((p, i) => { staffTotals[i] += p; });
-    unassigned += parts[4];
-    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week) };
-  });
   const programTotals = [0, 0, 0, 0];
   const rows = lines.map((line) => {
     const cents = lineCents(line);
@@ -175,8 +177,9 @@ export function missionModel(builder, data) {
     const entry = data.lines[line.category] || null;
     const method = entry?.method || null;
     const shares = entry && method !== 'spread' ? entry.shares : [0, 0, 0, 0];
-    return { line, cents, isSource: false, entry, method, shares, note: entry?.note || '' };
+    return { line, cents, isSource: false, entry, method, shares, note: entry?.note || '', staffCost: 0, staffBy: [] };
   });
+  const rowByCategory = new Map(rows.filter((r) => !r.isSource).map((r) => [r.line.category, r]));
   for (const r of rows) {
     if (r.isSource || r.method === 'spread') continue;
     const parts = apportion(r.cents, [...r.shares, FULL - sum(r.shares)]);
@@ -184,6 +187,38 @@ export function missionModel(builder, data) {
     r.parts.forEach((p, i) => { programTotals[i] += p; });
     unassigned += parts[4];
   }
+  // Time a person gives to a "spread" line follows the lines aligned directly.
+  const directSpread = toShares(programTotals);
+  const lineShares = (r) => (r.method === 'spread' ? directSpread : r.shares);
+  const staffTotals = [0, 0, 0, 0];
+  const staff = data.staff.map((person, index) => {
+    const benefitShare = data.staff.length && sum(benefitParts) === benefitPool ? benefitParts[index] : 0;
+    const pool = ownPay[index] + benefitShare;
+    const shares = staffShares(person);
+    // Time on specific budget lines takes that line's Ends; the rest of the time takes the
+    // person's own split. Either can leave part of the cost not yet aligned.
+    const onLines = Object.entries(person.lineTime || {}).filter(([c, bp]) => rowByCategory.has(c) && bp > 0);
+    const lineBp = sum(onLines.map(([, bp]) => bp));
+    const pieces = apportion(pool, [...onLines.map(([, bp]) => bp), FULL - lineBp]);
+    const parts = [0, 0, 0, 0];
+    let open = 0;
+    onLines.forEach(([c, bp], i) => {
+      const r = rowByCategory.get(c);
+      r.staffCost += pieces[i];
+      r.staffBy.push({ id: person.id, label: person.label, bp, cents: pieces[i] });
+      const ls = lineShares(r);
+      const split = apportion(pieces[i], [...ls, FULL - sum(ls)]);
+      split.slice(0, 4).forEach((v, j) => { parts[j] += v; });
+      open += split[4];
+    });
+    const rest = apportion(pieces.at(-1), [...shares, FULL - sum(shares)]);
+    rest.slice(0, 4).forEach((v, j) => { parts[j] += v; });
+    open += rest[4];
+    parts.forEach((p, i) => { staffTotals[i] += p; });
+    unassigned += open;
+    const effShares = pool > 0 ? toShares(parts) : (lineBp ? shares : shares);
+    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, effShares, lineBp, onLines, parts, unassigned: open, week: person.week, weekResult: weekShares(person.week) };
+  });
   // "Spread like the budget" follows everything that is aligned directly, staff time included.
   const basis = programTotals.map((v, i) => v + staffTotals[i]);
   const spreadShares = toShares(basis);
@@ -254,7 +289,17 @@ export function applyLine(data, form, builder) {
   else fail('Choose how this line should be aligned.');
   const lines = { ...data.lines };
   if (entry) lines[category] = entry; else delete lines[category];
-  return { data: { ...data, lines }, params: { line: category } };
+  let staff = data.staff;
+  if (form.staff_time === '1') {
+    staff = data.staff.map((person, i) => {
+      const bp = percent(form[`st_${i}`]);
+      const lineTime = { ...(person.lineTime || {}) };
+      if (bp) lineTime[category] = bp; else delete lineTime[category];
+      if (sum(Object.values(lineTime)) > FULL) fail(`${person.label}’s time on budget lines adds up to more than 100%.`);
+      return { ...person, lineTime };
+    });
+  }
+  return { data: { ...data, lines, staff }, params: { line: category } };
 }
 
 export function applyBuildingUse(data, form) {
@@ -280,6 +325,18 @@ export function applyStaff(data, form, builder) {
   }
   const mode = form.mode === 'week' ? 'week' : 'quick';
   const person = { ...data.staff[index], label, sources, mode, hours: hoursValue(form.hours, 'Hours per week'), reviewed: form.reviewed === 'yes' };
+  if (form.line_time === '1') {
+    const owned = new Set([...data.staff.flatMap((s) => s.sources), ...sources, ...(data.benefitLines || [])]);
+    const lineTime = {};
+    for (let i = 0; i < lines.length; i += 1) {
+      const bp = percent(form[`lt_${i}`]);
+      if (!bp) continue;
+      if (owned.has(lines[i].category)) fail('Time can go only to ministry lines, not to staff pay or benefit lines.');
+      lineTime[lines[i].category] = bp;
+    }
+    if (sum(Object.values(lineTime)) > FULL) fail(`${label}’s time on budget lines adds up to more than 100%.`);
+    person.lineTime = lineTime;
+  }
   if (mode === 'quick') person.shares = sharesFrom(form);
   else {
     const week = [];
@@ -427,8 +484,27 @@ export function applyLines(data, form, builder) {
   return { data: { ...data, lines: next }, params: { changed: String(changed) } };
 }
 
+// Percentages typed straight into the Staff time table (quick splits only; a typical week is
+// edited in its own builder).
+export function applyStaffShares(data, form) {
+  let changed = 0;
+  const staff = data.staff.map((s) => ({ ...s }));
+  for (let i = 0; i < 60 && form[`srole_${i}`] !== undefined; i += 1) {
+    const person = staff.find((s) => s.id === String(form[`srole_${i}`]));
+    if (!person) fail('The staff roles changed. Reload and try again.');
+    const shares = GOAL_KEYS.map((g) => percent(form[`scell_${i}_${g}`]));
+    if (shares.join(',') === String(form[`sorig_${i}`] || '')) continue;
+    if (person.mode === 'week') fail(`${person.label}’s time comes from a typical week. Edit it there.`);
+    if (sum(shares) > FULL) fail(`${person.label}’s shares add up to more than 100%.`);
+    person.shares = shares;
+    changed += 1;
+  }
+  return { data: { ...data, staff }, params: { changed: String(changed) } };
+}
+
 const ACTIONS = {
   lines: { run: applyLines, page: 'mission' },
+  'staff-shares': { run: applyStaffShares, page: 'staff-time' },
   line: { run: applyLine, page: 'mission' },
   building: { run: applyBuildingUse, page: 'mission' },
   staff: { run: applyStaff, page: 'staff-time' },
@@ -512,39 +588,42 @@ export function missionLive() {
     }));
     update();
   });
-  const cellsForm = document.getElementById('ma-cells');
-  if (cellsForm) {
+  document.querySelectorAll('form[data-cells-form]').forEach((cellsForm) => {
     const status = cellsForm.querySelector('[data-cells-status]');
-    const cells = Array.from(document.querySelectorAll('input[data-cell-row]'));
+    const idle = status ? status.textContent : '';
+    const cells = Array.from(document.querySelectorAll('input.ma-cell[form="' + cellsForm.id + '"]'));
     const rowOf = (n) => cells.filter((c) => c.dataset.cellRow === n);
+    const origOf = (n) => {
+      const name = n.charAt(0) === 's' ? 'sorig_' + n.slice(1) : 'orig_' + n;
+      const el = document.querySelector('input[form="' + cellsForm.id + '"][name="' + name + '"]');
+      return el ? el.value : '';
+    };
     const updateRow = (n) => {
       const inputs = rowOf(n);
       const shares = inputs.map(pct);
       const total = shares.reduce((a, b) => a + b, 0);
-      const orig = (document.querySelector('input[name="orig_' + n + '"]') || {}).value || '';
       inputs.forEach((el, i) => {
-        el.classList.toggle('is-changed', shares.join(',') !== orig);
+        el.classList.toggle('is-changed', shares.join(',') !== origOf(n));
         el.classList.toggle('is-over', total > FULL);
-        el.setCustomValidity(total > FULL && i === 0 ? 'This line’s shares add up to more than 100%.' : '');
+        el.setCustomValidity(total > FULL && i === 0 ? 'These shares add up to more than 100%.' : '');
       });
-      const tr = document.querySelector('tr[data-row="' + n + '"]');
+      const tr = inputs[0] && inputs[0].closest('tr');
       if (tr && total) paint(tr.querySelector('.ma-bar'), shares);
     };
     const refresh = () => {
       const changed = new Set(cells.filter((c) => c.classList.contains('is-changed')).map((c) => c.dataset.cellRow)).size;
       const over = new Set(cells.filter((c) => c.classList.contains('is-over')).map((c) => c.dataset.cellRow)).size;
       cellsForm.classList.toggle('is-dirty', changed > 0);
-      if (status) status.textContent = over ? over + (over === 1 ? ' line adds' : ' lines add') + ' up to more than 100%.' : changed ? changed + (changed === 1 ? ' line' : ' lines') + ' changed, not saved yet.' : 'Click any Welcome, Receive, Grow or Go cell to type a percentage.';
+      if (status) status.textContent = over ? over + (over === 1 ? ' row adds' : ' rows add') + ' up to more than 100%.' : changed ? changed + (changed === 1 ? ' row' : ' rows') + ' changed, not saved yet.' : idle;
     };
     cells.forEach((el) => {
       el.addEventListener('input', () => { updateRow(el.dataset.cellRow); refresh(); });
       el.addEventListener('focus', () => el.select());
       el.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); cellsForm.requestSubmit(); } });
     });
-    cellsForm.addEventListener('submit', (event) => { if (!cellsForm.reportValidity()) event.preventDefault(); });
+    cellsForm.addEventListener('submit', (event) => { if (!cellsForm.reportValidity()) event.preventDefault(); else cellsForm.dataset.sending = '1'; });
     window.addEventListener('beforeunload', (event) => { if (cellsForm.classList.contains('is-dirty') && !cellsForm.dataset.sending) event.preventDefault(); });
-    cellsForm.addEventListener('submit', () => { cellsForm.dataset.sending = '1'; });
-  }
+  });
   document.querySelectorAll('form[data-ma-week]').forEach((form) => {
     const cents = Number(form.dataset.cents || 0);
     const target = Number(form.dataset.hours || 0);
