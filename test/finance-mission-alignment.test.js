@@ -132,7 +132,7 @@ describe('staff from the compensation planner', () => {
     roster: [{ name: 'Dinger', position: 'Senior Pastor', accountCode: '58001', ftePct: 100 }, { name: 'Knapp', position: 'Director of Christian Education', accountCode: '58002', ftePct: 50, hideFromCouncil: true }, { name: 'Away', position: 'Preschool', externallyFunded: true }],
     computed: [{ churchCostCents: 9000000, benefits: { totalCents: 3000000 } }, { churchCostCents: 4000000, benefits: { totalCents: 1000000 } }, { churchCostCents: 1, benefits: { totalCents: 1 } }],
   };
-  const b = { targetYear: 2027, baseYear: 2026, lines: [line('Expenses:Salaries:58001 Pastor Salary', 6000000), line('Expenses:Salaries:58002 DCE Salary', 3000000), line('Expenses:Staff:Health Insurance', 2400000), line('Expenses:Staff:Pension', 1600000), line('Expenses:Worship', 500000)] };
+  const b = { targetYear: 2027, baseYear: 2026, lines: [line('Expenses:Salaries:58001 Pastor Salary', 6000000), line('Expenses:Salaries:58002 DCE Salary', 3000000), line('Expenses:Staff:Health Insurance', 2400000), line('Expenses:Staff:Pension', 1600000), line('Expenses:Worship', 500000), line('Expenses:57 MDO Expenses:57162 MDO Payroll Taxes', 3000000)] };
   it('reads the roster without anyone paid from another budget', () => {
     const workers = plannerWorkers(plan);
     expect(workers.map((w) => w.position)).toEqual(['Senior Pastor', 'Director of Christian Education']);
@@ -150,12 +150,16 @@ describe('staff from the compensation planner', () => {
     const m = missionModel(b, first.data);
     expect(m.staff.map((s) => s.pool)).toEqual([6000000 + 3000000, 3000000 + 1000000]);
     expect(m.staffPool).toBe(13000000);
-    expect(m.rows.filter((r) => !r.isSource).map((r) => r.line.category)).toEqual(['Expenses:Worship']);
+    expect(m.rows.filter((r) => !r.isSource).map((r) => r.line.category)).toEqual(['Expenses:Worship', 'Expenses:57 MDO Expenses:57162 MDO Payroll Taxes']);
     const edited = { ...first.data, staff: first.data.staff.map((s, i) => (i === 0 ? { ...s, shares: [2000, 4000, 3000, 1000], reviewed: true } : s)) };
     const again = importStaff(edited, {}, b, { workers });
     expect(again.params.imported).toBe('0');
     expect(again.data.staff[0]).toMatchObject({ shares: [2000, 4000, 3000, 1000], reviewed: true });
     expect(() => importStaff(emptyMission(), {}, b, { workers: null })).toThrow(/could not be read/);
+    const byHand = { ...emptyMission(), staff: [{ id: 'h', label: 'Lead Pastor', hours: null, sources: ['Expenses:Salaries:58001 Pastor Salary'], mode: 'quick', shares: [2500, 2500, 2500, 2500], week: [], reviewed: true }] };
+    const adopted = importStaff(byHand, {}, b, { workers });
+    expect(adopted.params.imported).toBe('1');
+    expect(adopted.data.staff[0]).toMatchObject({ id: 'h', label: 'Lead Pastor', planKey: 'plan:dinger', shares: [2500, 2500, 2500, 2500] });
     expect(applyBenefitLines(first.data, { benefit_2: 'Expenses:Staff:Health Insurance' }, b).data.benefitLines).toEqual(['Expenses:Staff:Health Insurance']);
     expect(() => applyLine(first.data, { category: 'Expenses:Staff:Pension', method: 'one', end: 'go' }, b)).toThrow(/Staff time/);
   });

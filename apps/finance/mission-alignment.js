@@ -324,8 +324,11 @@ export function applyStory(data, form) {
 
 // ── Bringing staff in from the compensation planner ──────────────────────────────────────────
 
-const BENEFIT_LINE_RE = /health|medical|dental|vision|disabilit|pension|retirement|\bfica\b|social security|payroll tax|workers.? comp/i;
-const PAY_LINE_RE = /salar|wage|payroll|compensation|housing|stipend/i;
+// Every church staff benefit and payroll-cost line, so a person's full cost follows their time.
+// Mother's Day Out payroll lines are its own program and stay out.
+const BENEFIT_LINE_RE = /health|medical|dental|vision|disabilit|pension|retirement|\bfica\b|social security|payroll tax|payroll processing|workers?.? ?comp|mileage|professional development|continuing ed/i;
+const PAY_LINE_RE = /salar|wage|housing|stipend/i;
+const MDO_RE = /\bMDO\b|mother.?s day out/i;
 const plannerKey = (w) => `plan:${String(w.name || '').trim().toLowerCase()}`;
 
 // The compensation planner's roster, projected for the budget year, as the allocation tool needs
@@ -356,7 +359,7 @@ export function payLinesFor(worker, lines) {
 
 export function suggestedBenefitLines(data, builder) {
   const owned = new Set(data.staff.flatMap((s) => s.sources));
-  return expenseLines(builder).filter((l) => !owned.has(l.category) && !data.lines[l.category] && BENEFIT_LINE_RE.test(`${l.category} ${l.name || ''}`) && !PAY_LINE_RE.test(l.name || '')).map((l) => l.category);
+  return expenseLines(builder).filter((l) => !owned.has(l.category) && !data.lines[l.category] && BENEFIT_LINE_RE.test(`${l.category} ${l.name || ''}`) && !PAY_LINE_RE.test(l.name || '') && !MDO_RE.test(`${l.category} ${l.name || ''}`)).map((l) => l.category);
 }
 
 export function importStaff(data, form, builder, { workers } = {}) {
@@ -369,7 +372,10 @@ export function importStaff(data, form, builder, { workers } = {}) {
   const weights = totalBenefits ? distribute(FULL, workers.map((w) => w.benefitsCents)) : workers.map(() => 0);
   let added = 0;
   workers.forEach((w, i) => {
-    let person = staff.find((s) => s.planKey === w.key);
+    const payLines = payLinesFor(w, lines);
+    // A role set up by hand (or from the budget narrative) that already holds this person's pay
+    // line is the same person: it is adopted rather than duplicated.
+    let person = staff.find((s) => s.planKey === w.key) || staff.find((s) => !s.planKey && payLines.some((c) => s.sources.includes(c)));
     if (!person) {
       if (staff.length >= 30) fail('A year can have up to 30 staff roles.');
       person = { id: crypto.randomUUID(), label: (w.position || w.name).slice(0, 60), hours: null, sources: [], mode: 'quick', shares: [0, 0, 0, 0], week: [], reviewed: false };
@@ -378,7 +384,7 @@ export function importStaff(data, form, builder, { workers } = {}) {
     }
     Object.assign(person, { planKey: w.key, name: w.name, position: w.position, benefitWeight: weights[i], councilHidden: w.councilHidden });
     if (person.hours == null && w.hours) person.hours = w.hours;
-    for (const c of payLinesFor(w, lines)) {
+    for (const c of payLines) {
       if (owned.has(c) || data.lines[c] || (data.benefitLines || []).includes(c)) continue;
       person.sources.push(c); owned.add(c);
     }
