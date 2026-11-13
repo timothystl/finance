@@ -69,6 +69,7 @@ const D1_WRITE_ROUTE_IDS = new Set([
   'import-church-xlsx-v1', 'import-church-balances-xlsx-v1',
 ]);
 const DB_WRITE_ROUTE_IDS = new Set([
+  'mission-save-v1',
   'compensation-plan-save-v1', 'property-reserve-entry-v1', 'property-reserve-disbursement-entry-v1',
   'property-distribution-entry-v1', 'property-capital-ledger-entry-v1',
   'compensation-raise-plan-save-v1', 'compensation-council-draft-save-v1', 'compensation-council-overlay-save-v1',
@@ -122,6 +123,7 @@ describe('Finance staging route manifest', () => {
       '/api/v1/facilities/pm-save', '/api/v1/facilities/pm-done', '/api/v1/facilities/project-save',
       '/api/v1/facilities/file-upload', '/api/v1/facilities/file-remove', '/api/v1/facilities/import', '/api/v1/facilities/file',
       '/api/v1/property/receivable-save', '/api/v1/property/receivable-import', '/api/v1/property/receivable-remove', '/api/v1/property/bank-rec-save', '/api/v1/property/bank-rec-remove', '/api/v1/property/rent-growth-save', '/api/v1/giving/benchmark-zips-save',
+      '/api/v1/planning/mission-save',
       '/api/v1/planning/scenario-save', '/api/v1/planning/scenario-basis', '/api/v1/planning/scenario-create', '/api/v1/planning/scenario-delete',
       '/api/v1/hr/person-save', '/api/v1/hr/credential-save', '/api/v1/hr/review-save', '/api/v1/hr/goal-save',
       '/api/v1/hr/position-save', '/api/v1/hr/policy-save', '/api/v1/hr/signature-save', '/api/v1/hr/benefit-change-save',
@@ -146,6 +148,7 @@ describe('Finance staging route manifest', () => {
       '/api/v1/qb/connect', '/api/v1/qb/callback', '/api/v1/qb/disconnect', '/api/v1/qb/sync', '/api/v1/qb/sync-years', '/api/v1/qb/restore',
       '/accounting', '/accounting/app.js', '/accounting/app.css', '/api/v1/accounting-workspace',
       '/tuition-planner/app.js', '/api/v1/tuition', '/tuition-aid',
+      '/mission-alignment/live.js',
       '/budget-planner/live.js', '/nudge-bands/live.js', '/print/print.js', '/compensation-planner/app.js',
       '/api/v1/connect-planner/salary', '/api/v1/connect-planner/church-year', '/api/v1/connect-planner/board-categories', '/api/v1/connect-planner/purpose-tags',
       '/api/v1/connect-planner/salary-save',

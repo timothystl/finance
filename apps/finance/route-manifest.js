@@ -249,6 +249,7 @@ const ROUTES = [
   { id: 'property-rent-growth-save-v1', paths: ['/api/v1/property/rent-growth-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.property-rent-growth-save.v1' },
   // Giving › Campaign capacity: the ZIP codes whose free Census figures are shown beside the projection. Admin-only form post.
   { id: 'giving-benchmark-zips-save-v1', paths: ['/api/v1/giving/benchmark-zips-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.giving-benchmark-zips-save.v1' },
+  { id: 'mission-save-v1', paths: ['/api/v1/planning/mission-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.mission-alignment-save.v1' },
   { id: 'planning-scenario-save-v1', paths: ['/api/v1/planning/scenario-save'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.planning-scenario-save.v1' },
   { id: 'planning-scenario-basis-v1', paths: ['/api/v1/planning/scenario-basis'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.planning-scenario-basis.v1' },
   { id: 'planning-scenario-create-v1', paths: ['/api/v1/planning/scenario-create'], methods: WRITE_METHODS, dataSource: 'finance-db-write', writer: true, contract: 'finance.planning-scenario-create.v1' },
@@ -385,6 +386,7 @@ const ROUTES = [
   { id: 'tuition-api-v1', paths: ['/api/v1/tuition'], methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], dataSource: 'finance-db-write', writer: true, contract: 'finance.tuition-aid.v1' },
   { id: 'tuition-aid-legacy-page', paths: ['/tuition-aid'], dataSource: 'none' },
   // Live totals for Planning > Budget planner (budget-planner-live.js): a script served by this Worker.
+  { id: 'mission-alignment-asset', paths: ['/mission-alignment/live.js'], dataSource: 'none' },
   { id: 'budget-planner-asset', paths: ['/budget-planner/live.js'], dataSource: 'none' },
   // Live preview for Giving reports > Nudges and next steps (nudge-bands-live.js): a script served by this Worker.
   { id: 'nudge-bands-asset', paths: ['/nudge-bands/live.js'], dataSource: 'none' },
