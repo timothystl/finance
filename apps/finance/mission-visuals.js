@@ -139,7 +139,7 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
   const programs = shareOf(model.programTotals);
   const programPool = model.total - model.staffPool;
   const leg = (shares, amounts) => `<div class="cv-leg">${MISSION_GOALS.map(([, l], i) => `<div><span class="cv-sw" style="background:${PRESENT_COLORS[i]}"></span>${l}<span class="num">${amounts ? money(amounts[i]) : ''}</span><strong class="num">${pct0(shares[i])}</strong></div>`).join('')}</div>`;
-  const people = model.staff.filter((s) => sum(s.shares) > 0 && (admin || !s.councilHidden));
+  const people = model.staff.filter((s) => sum(s.effShares) > 0 && (admin || !s.councilHidden));
   const notes = model.rows.filter((r) => !r.isSource && (r.note || r.status === 'spread' || r.status === 'split'));
   const methodText = (r) => (r.status === 'spread' ? 'Like the rest of the budget' : MISSION_GOALS.map(([, l], i) => (r.shares[i] ? `${l} ${pct0(r.shares[i])}` : '')).filter(Boolean).join(' · '));
   return `${head}<section class="cv-slide" aria-label="Mission alignment report"><div class="cv-rule"></div><div class="cv-body">
@@ -151,7 +151,7 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
       <section class="cv-panel"><h3>Programs &amp; building · ${money(programPool)}</h3><div class="cv-pieset">${pie(programs, { size: 150 })}${leg(programs)}</div></section>
     </div>
     ${people.length ? `<section class="cv-panel"><div class="ma-section-head"><h3>Each staff role, by End</h3><span class="ma-muted">From a typical week or a quick split · administration spread across all four</span></div>
-      <div class="cv-people">${people.map((s) => `<div>${pie(s.shares, { size: 120, label: `${s.label}: ${MISSION_GOALS.map(([, l], i) => `${l} ${Math.round(s.shares[i] / 100)}`).join(', ')} percent` })}<strong style="font-size:16px">${e(s.label)}</strong><span style="font-size:13px;color:#3B4A63">${s.shares.map((v) => Math.round(v / 100)).join(' · ')}</span></div>`).join('')}</div>
+      <div class="cv-people">${people.map((s) => `<div>${pie(s.effShares, { size: 120, label: `${s.label}: ${MISSION_GOALS.map(([, l], i) => `${l} ${Math.round(s.effShares[i] / 100)}`).join(', ')} percent` })}<strong style="font-size:16px">${e(s.label)}</strong><span style="font-size:13px;color:#3B4A63">${s.effShares.map((v) => Math.round(v / 100)).join(' · ')}</span></div>`).join('')}</div>
       <span class="ma-muted">Numbers under each chart read Welcome · Receive · Grow · Go, in percent.</span></section>` : ''}
     <section class="cv-panel"><h3>The same numbers as a table</h3><table class="cv-table"><thead><tr><th scope="col">Part of the budget</th><th scope="col" class="num">Total</th>${MISSION_GOALS.map(([, l]) => `<th scope="col" class="num">${l}</th>`).join('')}<th scope="col" class="num">Not yet aligned</th></tr></thead>
       <tbody><tr><td>Staff salaries &amp; benefits</td><td class="num">${money(model.staffPool)}</td>${model.staffTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.staffPool - sum(model.staffTotals))}</td></tr>

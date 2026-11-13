@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   apportion, applyLine, applyLines, applyStaff, addStaff, applyStory, missionModel, normalizeMission, saveMission, weekShares, emptyMission, canManageMission,
-  importStaff, plannerWorkers, applyBenefitLines,
+  importStaff, plannerWorkers, applyBenefitLines, applyStaffShares,
 } from '../apps/finance/mission-alignment.js';
 import { renderMissionPage, renderStaffTimePage } from '../apps/finance/mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage } from '../apps/finance/mission-visuals.js';
@@ -124,6 +124,46 @@ describe('typing percentages into the table', () => {
     expect(applyLines(data, { row_0: 'Expenses:Hospitality', orig_0: '10000,0,0,0' }, builder).data.lines['Expenses:Hospitality']).toBeUndefined();
     expect(() => applyLines(data, { row_0: 'Expenses:Utilities', orig_0: '0,0,0,0', cell_0_welcome: '70', cell_0_go: '40' }, builder)).toThrow(/more than 100/);
     expect(() => applyLines(data, { row_0: 'Expenses:Salary', orig_0: '0,0,0,0', cell_0_go: '10' }, builder)).toThrow(/Staff time/);
+  });
+});
+
+describe('staff time on specific budget lines', () => {
+  it('counts that share of a person on the line, in the line’s Ends, and the rest by their own split', () => {
+    const data = state();
+    data.lines['Expenses:Utilities'] = { method: 'one', shares: [0, 0, 0, 10000], note: '' };
+    data.staff[0].lineTime = { 'Expenses:Utilities': 1000 }; // 10% of the Pastor's $100,000 → Go
+    const m = missionModel(builder, data);
+    const util = m.rows.find((r) => r.line.category === 'Expenses:Utilities');
+    expect(util.staffCost).toBe(1000000);
+    expect(util.staffBy).toEqual([{ id: 'p', label: 'Pastor', bp: 1000, cents: 1000000 }]);
+    // 10% Go from the line + 90% × [20,40,30,10].
+    expect(m.staff[0].parts).toEqual([1800000, 3600000, 2700000, 900000 + 1000000]);
+    expect(m.staffPool).toBe(10000000);
+    expect(total(m)).toBe(m.total);
+  });
+  it('is set from the line’s drawer or the person’s editor, never over 100% or on pay lines', () => {
+    const data = state();
+    const fromLine = applyLine(data, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', staff_time: '1', st_0: '5' }, builder).data;
+    expect(fromLine.staff[0].lineTime).toEqual({ 'Expenses:Hospitality': 500 });
+    expect(() => applyLine({ ...data, staff: [{ ...data.staff[0], lineTime: { 'Expenses:Worship': 9800 } }] }, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', staff_time: '1', st_0: '5' }, builder)).toThrow(/more than 100/);
+    const form = { id: 'p', label: 'Pastor', mode: 'quick', share_welcome: '100', line_time: '1', lt_1: '12.5' };
+    expect(applyStaff(data, form, builder).data.staff[0].lineTime).toEqual({ 'Expenses:Worship': 1250 });
+    expect(() => applyStaff(data, { ...form, source_3: 'Expenses:Salary', lt_3: '5' }, builder)).toThrow(/ministry lines/);
+  });
+  it('saves percentages typed into the Staff time table, quick splits only', () => {
+    const data = state();
+    const next = applyStaffShares(data, { srole_0: 'p', sorig_0: '2000,4000,3000,1000', scell_0_welcome: '50', scell_0_receive: '50' });
+    expect(next.data.staff[0].shares).toEqual([5000, 5000, 0, 0]);
+    expect(next.params.changed).toBe('1');
+    const week = { ...data, staff: [{ ...data.staff[0], mode: 'week' }] };
+    expect(() => applyStaffShares(week, { srole_0: 'p', sorig_0: '0,0,0,0', scell_0_go: '10' })).toThrow(/typical week/);
+    expect(() => applyStaffShares(data, { srole_0: 'p', sorig_0: '', scell_0_go: '60', scell_0_grow: '60' })).toThrow(/more than 100/);
+    const html = renderStaffTimePage({ builder, data, params: new URLSearchParams('role=p'), canEdit: true });
+    expect(html).toContain('name="scell_0_welcome" form="ma-staff-cells"');
+    expect(html).toContain('Time on specific budget lines');
+    const drawer = renderMissionPage({ builder, data, params: new URLSearchParams('line=Expenses%3AUtilities'), canEdit: true });
+    expect(drawer).toContain('Staff time on this line');
+    expect(drawer).toContain('name="st_0"');
   });
 });
 
