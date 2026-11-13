@@ -64,6 +64,8 @@ import { HR_STYLES, renderHrPage } from './hr-pages.js';
 import { FACILITIES_WRITERS, buildFacilitiesView, isoDay, readFacilities } from './facilities-service.js';
 import { canEditFacilities, describeFacilitiesStatus, ensureFacilitiesSchema, handleFacilitiesWrite } from './facilities-routes.js';
 import { serveFacilityFile } from './facility-files.js';
+import { FormValidationError } from './form-fields.js';
+import { MISSION_LIVE_JS, readMission, saveMission, canManageMission } from './mission-alignment.js';
 import { PLANNING_WRITERS, canEditPlanning, ensurePlanningSchema, readPlanningScenarios } from './planning-scenarios-service.js';
 import { PLANNING_V3_STYLES, renderForecastPage, renderScenariosPage } from './planning-v3-pages.js';
 import { describePlanningBasisFailure, fetchPlanningBasis } from './connect-planning-client.js';
@@ -1818,6 +1820,7 @@ function renderSectionBody(ctx) {
     const plannerOp = ctx.searchParams.get('op') === 'planner';
     return renderBudgetBuilderPage({
       ...shared,
+      missionAlignment: isAdmin && !isSyntheticUnavailable(ctx.missionAlignment) ? ctx.missionAlignment : null,
       liveVersion: ctx.metadata?.releaseSha || 'local',
       // Council with budget edit may change Plan cells only, saved to their own draft by Connect;
       // Projected and Actual corrections, and the plan tools, stay admin-only (Connect re-checks).
@@ -2209,6 +2212,9 @@ export default {
       return response(request.method === 'HEAD' ? null : NUDGE_BANDS_LIVE_JS, {
         headers: { 'Content-Type': 'text/javascript; charset=utf-8' },
       }, { cacheControl: 'private, max-age=3600' });
+    }
+    if (route.id === 'mission-alignment-asset') {
+      return response(request.method === 'HEAD' ? null : MISSION_LIVE_JS, { headers: { 'Content-Type': 'text/javascript; charset=utf-8' } }, { cacheControl: 'private, max-age=3600' });
     }
     if (route.id === 'budget-planner-asset') {
       return response(request.method === 'HEAD' ? null : BUDGET_PLANNER_LIVE_JS, {
@@ -4006,6 +4012,18 @@ export default {
       return handleFinanceFormWrite({ request, env, url, section: 'giving-analytics', writer: BENCHMARK_WRITERS[route.id], canEdit: canEditBenchmarks });
     }
 
+    if (route.id === 'mission-save-v1') {
+      return handleFinanceFormWrite({ request, env, url, section: 'planning', canEdit: canManageMission,
+        writer: { page: 'builder', run: async (db, form, actor) => {
+          const target = Number(form.target); const base = Number(form.base);
+          if (!Number.isInteger(target) || target < 2001 || target > 2099 || !Number.isInteger(base) || base < 2000 || base >= target) throw new FormValidationError('Choose valid budget years.');
+          const result = await fetchBudgetBuilder(env, target, base);
+          if (!result.ok) throw new FormValidationError('The current budget could not be loaded. Try again.');
+          return saveMission(db, form, actor, result.builder);
+        } },
+      });
+    }
+
     if (PLANNING_WRITERS[route.id]) {
       await ensurePlanningSchema(env.FINANCE_DB);
       return handleFinanceFormWrite({ request, env, url, section: 'planning', writer: PLANNING_WRITERS[route.id], canEdit: canEditPlanning });
@@ -4457,6 +4475,8 @@ export default {
         // The Budget planner's base and target years come from its own view parameters.
         const plannerView = planningPageId === 'builder' ? plannerParams(url.searchParams) : null;
         let budgetBuilder = plannerView ? fetchBudgetBuilder(env, plannerView.target, plannerView.base) : null;
+        const missionLoad = plannerView && !councilPreview && canManageMission(roleResult)
+          ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear)) : null) : null;
         // A council member sees their own Plan draft, read back through Connect as themselves.
         const councilBudgetDraftLoad = plannerView && !councilPreview && roleResult.ok && roleResult.role === 'council'
           ? fetchCouncilBudgetDraft(env, accessJwt) : null;
@@ -4905,7 +4925,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          missionAlignment: await missionLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,

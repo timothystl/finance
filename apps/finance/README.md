@@ -75,3 +75,20 @@ A separate familiar accounting layout is served at `/accounting` (see ARCHITECTU
 - `migrations/`: Finance D1 migrations; `finance-owned-schema.js` creates the later tables on first use.
 - `migration/`: copy-and-verify tooling used for the accounting data move.
 - `fixtures/`: synthetic test data; applied by hand, never as a migration, never to production.
+
+### Mission alignment and staff time
+
+Budget planner → Mission alignment & staff time is an admin-only, year-scoped worksheet.
+Each expense has a Welcome (acceptance), Receive (worship), Grow (Christian education),
+and Go (Outreach) percentage split. Partial allocations are saved as work in progress,
+with unallocated dollars shown explicitly. Add a staff role, link its existing salary and
+benefit expense lines, then assign percentages of that role’s total time to ministry lines.
+Linked compensation is redistributed rather than added to the budget. Each compensation
+line belongs to one role; combined payroll must first be split into separate budget lines.
+Staff percentages may total at most 100%; unassigned time stays unallocated.
+
+Finance owns the metadata in `finance_settings` under `finance_mission_alignment_<year>`;
+Connect remains authoritative for the budget amounts. No payroll amounts or personnel
+records are copied. Saves verify the current budget categories, reject overallocations,
+and use a revision plus atomic compare-and-swap to prevent lost concurrent edits. Council
+drafts and existing compensation permissions are unchanged; this feature is admin-only.

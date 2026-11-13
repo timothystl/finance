@@ -15,6 +15,7 @@
 //   - "Choose rows" puts a checkbox on each line that belongs to a separate GET form (the HTML
 //     form attribute), so leaving lines out never submits the edit form;
 //   - Export CSV is a GET route returning the current view, and Print is print=1.
+import { renderMission } from './mission-alignment.js';
 import { escapeHtml as e } from './render-helpers.js';
 import { accountDisplayName, buildBoardSections, isHiddenAccount } from './board-layout.js';
 import { csvNum, csvText } from './payroll-report-render.js';
@@ -690,7 +691,7 @@ function outlook(model, p) {
 
 // ── The page ─────────────────────────────────────────────────────────────────────────────────
 
-export function renderBudgetBuilderPage({ liveVersion = 'local', builder: rawBuilder, params, canEditPlan = false, canEditActuals = false, canManageBudgetPlan = false, statuses = {}, councilViewer = false, councilDraft = null, councilDraftFailed = false, layout = null, now = new Date() }) {
+export function renderBudgetBuilderPage({ missionAlignment = null, liveVersion = 'local', builder: rawBuilder, params, canEditPlan = false, canEditActuals = false, canManageBudgetPlan = false, statuses = {}, councilViewer = false, councilDraft = null, councilDraftFailed = false, layout = null, now = new Date() }) {
   const p = plannerYears(plannerParams(params, now), rawBuilder);
   const builder = councilDraft ? applyCouncilDraft(rawBuilder, councilDraft) : rawBuilder;
   const model = buildPlannerModel(builder, { layout, params: p });
@@ -727,6 +728,7 @@ export function renderBudgetBuilderPage({ liveVersion = 'local', builder: rawBui
     ${lede}
     ${councilDraftFailed ? '<p class="status status-error">Your own draft could not be read from Connect, so these are the shared plan’s figures and the Plan column cannot be edited right now.</p>' : ''}
     ${councilViewer ? `<p class="muted-line">${drafts ? `${drafts} Plan figure${drafts === 1 ? ' is' : 's are'} your own draft (marked “Your draft”). ` : ''}A council member’s Plan changes are kept as a private draft in Connect; the shared plan and other members’ drafts are not changed.</p>` : ''}
+    ${canManageBudgetPlan ? '<p><a class="chip" href="#mission">Mission alignment &amp; staff time</a></p>' : ''}
     ${summaryStrip(model, p)}
     ${canManageBudgetPlan ? tabPanel(builder, p, layout) : ''}
     <div class="panel panel-spaced list-panel bp-panel">
@@ -736,6 +738,7 @@ export function renderBudgetBuilderPage({ liveVersion = 'local', builder: rawBui
       ${p.pick ? '<p class="muted-line">Tick the lines to leave out of the totals, the export and the printed sheet, then choose Done choosing rows.</p>' : ''}
       ${body}
     </div>
+    ${canManageBudgetPlan ? renderMission({ builder, data: missionAlignment, params }) : ''}
     ${outlook(model, p)}
     ${canManageBudgetPlan ? `<details class="panel panel-spaced edit-panel"><summary>Add a line that is not listed</summary>
       <form method="POST" action="/api/v1/connect-budget-plan-write" class="bb-form">
