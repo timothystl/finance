@@ -82,9 +82,13 @@ authoritative record until the writer is switched on purpose** (see Rules for da
 
 ## Website owns
 
-Payroll data (Website's backend, with its own Supabase project) and gym rental bookings and invoices.
-Finance's Payroll pages and gym income report relay to Website Admin through `PAYROLL_SERVICE`; moving
-that relay does not move ownership.
+Website Admin hosts the payroll RPC proxy; its configured upstream is the myMDO Supabase project
+`dahdstopsumxnqvdclmy`, not a separate Website payroll project. Church payroll tables and myMDO's
+own clock/approval inputs remain distinct. Website also owns gym rental bookings and invoices.
+Finance's Payroll pages and gym income report relay to Website Admin through `PAYROLL_SERVICE`;
+moving that relay does not move data ownership. Finance sends its contract credential and staff
+Access JWT; Website selects upstream database credentials, checks payroll_manage and injects its
+server-only payroll secret. Finance no longer embeds the upstream public anon key.
 
 ## myMDO owns
 
