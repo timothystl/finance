@@ -91,7 +91,8 @@ export const MISSION_STYLES = `
   .ma-table tr.ma-group td { background:#F3F7FA; font-weight:600; font-size:13px; color:#293D49; padding:7px 10px; }
   .ma-table tr.is-sel td { background:#DFEBF2; }
   .ma-table tfoot td { font-weight:700; border-bottom:0; border-top:1px solid #718694; }
-  .ma-table a.ma-rowlink { color:inherit; text-decoration:none; } .ma-table a.ma-rowlink:hover { text-decoration:underline; }
+  .ma-table a.ma-rowlink { color:#2B5065; text-decoration:underline; text-decoration-color:#B9CBD6; text-underline-offset:3px; } .ma-table a.ma-rowlink:hover { text-decoration-color:#386781; }
+  .ma-addstaff { font-size:13px; font-weight:600; white-space:nowrap; }
   .ma-frame { overflow-x:auto; border:1px solid #D7E2E9; border-radius:12px; background:#fff; }
   .ma-drawer { border:1px solid #D7E2E9; border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:16px; background:#fff; position:sticky; top:16px; }
   .ma-drawer h3 { margin:0; font-size:20px; }

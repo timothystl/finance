@@ -82,26 +82,30 @@ export function renderMissionPage({ builder, data, prior = null, layout = null, 
     const v = asDollars ? r.parts[i] : r.shares[i];
     return `<td class="num">${v ? (asDollars ? money(v) : pct0(v)) : '—'}</td>`;
   };
+  const hasStaff = canEdit && data.staff.length > 0;
+  const staffCol = (r, link) => (hasStaff
+    ? `<td class="num">${r.staffCost ? `<a href="${link}#ma-staff" title="${e(r.staffBy.map((x) => `${x.label} ${pct0(x.bp)}`).join(', '))}">${money(r.staffCost)}</a>` : `<a href="${link}#ma-staff" class="ma-addstaff">+ Add staff</a>`}</td>`
+    : '');
   const rowHtml = (r) => {
     const [kind, text] = METHOD_BADGES[r.status];
     const link = pageHref('mission', target, { line: r.line.category, ...(show !== 'all' ? { show } : {}), ...(asDollars ? { as: 'usd' } : {}), ...(q ? { q } : {}) });
     const sel = r.line.category === selected;
     const n = rowIndex++;
     const hidden = editable ? `<input type="hidden" form="ma-cells" name="row_${n}" value="${e(r.line.category)}"><input type="hidden" form="ma-cells" name="orig_${n}" value="${r.status === 'spread' ? '0,0,0,0' : r.shares.join(',')}">` : '';
-    return `<tr${sel ? ' class="is-sel" aria-selected="true"' : ''} data-row="${n}"><td>${hidden}${canEdit ? `<a class="ma-rowlink" href="${link}">${sel ? `<strong>${e(nameOf(r.line))}</strong>` : e(nameOf(r.line))}</a>` : e(nameOf(r.line))}${r.note ? `<div class="ma-note">${e(r.note.length > 90 ? `${r.note.slice(0, 90)}…` : r.note)}</div>` : ''}${r.staffCost ? `<div class="ma-note">+ ${money(r.staffCost)} staff time (${r.staffBy.map((x) => `${e(x.label)} ${pct0(x.bp)}`).join(', ')})</div>` : ''}</td><td class="num">${money(r.cents)}</td>${[0, 1, 2, 3].map((i) => cell(r, i, n)).join('')}<td>${stackBar(r.shares, { live: editable })}</td><td>${badge(kind, r.status === 'spread' ? 'Like the budget' : text)}</td></tr>`;
+    return `<tr${sel ? ' class="is-sel" aria-selected="true"' : ''} data-row="${n}"><td>${hidden}${canEdit ? `<a class="ma-rowlink" href="${link}">${sel ? `<strong>${e(nameOf(r.line))}</strong>` : e(nameOf(r.line))}</a>` : e(nameOf(r.line))}${r.note ? `<div class="ma-note">${e(r.note.length > 90 ? `${r.note.slice(0, 90)}…` : r.note)}</div>` : ''}${r.staffCost ? `<div class="ma-note">+ ${money(r.staffCost)} staff time (${r.staffBy.map((x) => `${e(x.label)} ${pct0(x.bp)}`).join(', ')})</div>` : ''}</td><td class="num">${money(r.cents)}</td>${[0, 1, 2, 3].map((i) => cell(r, i, n)).join('')}<td>${stackBar(r.shares, { live: editable })}</td><td>${badge(kind, r.status === 'spread' ? 'Like the budget' : text)}</td>${staffCol(r, link)}</tr>`;
   };
   let body = '';
   for (const s of sections) {
     const rows = s.items.filter(keep);
     if (!rows.length) continue;
-    body += `<tr class="ma-group"><td colspan="8">${e(s.label)}</td></tr>${rows.map(rowHtml).join('')}`;
+    body += `<tr class="ma-group"><td colspan="${hasStaff ? 9 : 8}">${e(s.label)}</td></tr>${rows.map(rowHtml).join('')}`;
   }
   if (model.staffPool || model.staff.length) {
     const st = model.staffTotals;
     const shares = model.staffPool ? st.map((c) => Math.round((c / model.staffPool) * FULL)) : [0, 0, 0, 0];
     const people = model.staff.filter((p) => p.pool).length;
     if (show === 'all' && !q) {
-      body += `<tr class="ma-group"><td colspan="8">Personnel</td></tr><tr><td>Staff salaries &amp; benefits<div class="ma-note">From staff time · ${people} role${people === 1 ? '' : 's'} linked</div></td><td class="num">${money(model.staffPool)}</td>${[0, 1, 2, 3].map((i) => `<td class="num">${asDollars ? money(st[i]) : (shares[i] ? pct0(shares[i]) : '—')}</td>`).join('')}<td>${stackBar(shares)}</td><td>${canEdit ? `<a href="${pageHref('staff-time', target)}" style="font-weight:600;font-size:14px">Set in Staff time →</a>` : ''}</td></tr>`;
+      body += `<tr class="ma-group"><td colspan="${hasStaff ? 9 : 8}">Personnel</td></tr><tr><td>Staff salaries &amp; benefits<div class="ma-note">From staff time · ${people} role${people === 1 ? '' : 's'} linked</div></td><td class="num">${money(model.staffPool)}</td>${[0, 1, 2, 3].map((i) => `<td class="num">${asDollars ? money(st[i]) : (shares[i] ? pct0(shares[i]) : '—')}</td>`).join('')}<td>${stackBar(shares)}</td><td>${canEdit ? `<a href="${pageHref('staff-time', target)}" style="font-weight:600;font-size:14px">Set in Staff time →</a>` : ''}</td>${hasStaff ? '<td></td>' : ''}</tr>`;
     }
   }
   const filters = `<form method="GET" action="/" class="ma-year" style="gap:12px"><input type="hidden" name="section" value="planning"><input type="hidden" name="page" value="mission"><input type="hidden" name="target" value="${target}">
@@ -111,8 +115,8 @@ export function renderMissionPage({ builder, data, prior = null, layout = null, 
     <button type="submit" class="button-outline">Apply</button></form>`;
   const table = `<div style="display:flex;flex-direction:column;gap:14px;min-width:0">
     <div class="ma-section-head"><h2>Line items</h2>${filters}</div>
-    <div class="ma-frame"><table class="ma-table"><thead><tr><th scope="col">Line item</th><th scope="col" class="num">Budget</th>${MISSION_GOALS.map(([, l]) => `<th scope="col" class="num">${l}</th>`).join('')}<th scope="col">Split</th><th scope="col">Method</th></tr></thead>
-    <tbody>${body || '<tr><td colspan="8" class="ma-muted">No lines match.</td></tr>'}</tbody></table></div>
+    <div class="ma-frame"><table class="ma-table"><thead><tr><th scope="col">Line item</th><th scope="col" class="num">Budget</th>${MISSION_GOALS.map(([, l]) => `<th scope="col" class="num">${l}</th>`).join('')}<th scope="col">Split</th><th scope="col">Method</th>${hasStaff ? '<th scope="col" class="num">Staff time</th>' : ''}</tr></thead>
+    <tbody>${body || `<tr><td colspan="${hasStaff ? 9 : 8}" class="ma-muted">No lines match.</td></tr>`}</tbody></table></div>
     ${editable ? `<form id="ma-cells" method="POST" action="/api/v1/planning/mission-save" class="ma-savebar" data-cells-form>${hiddenYear(builder, data, 'lines')}<span class="ma-muted" data-cells-status>Click any Welcome, Receive, Grow or Go cell to type a percentage. Choose a line’s name for presets, “spread like the budget” and the reason.</span><button type="submit">Save percentages</button></form>` : ''}
     <p class="ma-note">These are planned resource allocations, not measures of ministry impact. All expense lines in the FY${target} plan are included. Staff salary and benefit lines are aligned on the Staff time page.</p></div>`;
   const row = programRows.find((r) => r.line.category === selected);
@@ -167,7 +171,7 @@ function lineDrawer({ builder, data, row, prior, params, name }) {
 function staffOnLine(data, row) {
   if (!data.staff.length) return '';
   const pools = new Map((row.staffPools || []).map((p) => [p.id, p.pool]));
-  return `<div style="display:flex;flex-direction:column;gap:8px"><input type="hidden" name="staff_time" value="1">
+  return `<div id="ma-staff" style="display:flex;flex-direction:column;gap:8px;scroll-margin-top:16px"><input type="hidden" name="staff_time" value="1">
     <span style="font-size:14px;font-weight:600">Staff time on this line</span>
     <span class="ma-note">The share of each person’s year given to this line. That part of their pay and benefits is counted here and follows this line’s Ends.</span>
     ${data.staff.map((p, i) => { const bp = p.lineTime?.[row.line.category] || 0; const pool = pools.get(p.id) || 0; return `<div class="ma-grid"><label for="ma-st-${i}">${e(p.label)}</label><input id="ma-st-${i}" name="st_${i}" inputmode="decimal" value="${pctValue(bp)}" placeholder="0"><span class="num">${bp ? money(Math.round((pool * bp) / FULL)) : ''}</span></div>`; }).join('')}
