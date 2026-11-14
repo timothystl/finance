@@ -7,6 +7,7 @@
 // page's own permission check and live/synthetic labels. The only script is the toolbar's
 // `window.print()` button, which is a convenience, not a builder.
 import { MISSION_STYLES } from './mission-ui.js';
+import { DISTRICT_STYLES } from './district-support.js';
 import { escapeHtml } from './render-helpers.js';
 import { BALANCE_STYLES } from './balance-pages.js';
 import { COUNCIL_REPORT_STYLES } from './council-report-pages.js';
@@ -187,7 +188,7 @@ export function renderPrintDocument({ documentTitle, backHref, contentHtml, rele
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(documentTitle)} · Timothy Finance</title>
   <link rel="icon" href="/assets/finance-mark.png">
-  <style>${PRINT_STYLES}${BALANCE_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_ANALYTICS_STYLES}${PROPERTY_CHART_STYLES}${MISSION_STYLES}${PRINT_COUNCIL_FIT}</style>
+  <style>${PRINT_STYLES}${BALANCE_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_ANALYTICS_STYLES}${PROPERTY_CHART_STYLES}${MISSION_STYLES}${DISTRICT_STYLES}${PRINT_COUNCIL_FIT}</style>
 </head>
 <body class="print-body">
   <div class="print-toolbar"><a href="${escapeHtml(backHref)}">← Back to Finance</a><button type="button" id="print-now">Print / Save as PDF</button></div>

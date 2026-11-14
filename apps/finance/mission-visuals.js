@@ -70,11 +70,15 @@ function hbars(groups, color, baseYear) {
 
 export function renderCongregationPage({ builder: fullBuilder, data, layout = null, trend = null, params, canEdit = false, now = new Date() }) {
   const target = fullBuilder.targetYear;
-  const donorView = params?.get('view') === 'donor';
+  // Both views by default: the whole budget, and donor dollars with Mother's Day Out set aside
+  // (its tuition pays for it, and it adds to the congregation's ministry rather than drawing on gifts).
+  const view = ['whole', 'donor'].includes(params?.get('view')) ? params.get('view') : 'both';
+  const showWhole = view !== 'donor';
+  const showDonor = view !== 'whole';
   const mdoSplit = splitOutMdo(fullBuilder, layout);
-  // In the donor view the mission slide and the spending slide leave Mother's Day Out out.
-  const builder = donorView ? mdoSplit.church : fullBuilder;
-  const viewSwitch = `<nav class="segmented ma-noprint" aria-label="Which view" style="margin:0 0 16px;display:inline-flex;gap:4px">${[['', 'Whole budget'], ['donor', 'Donor dollars']].map(([v, l]) => `<a href="${pageHref('congregation', target, v ? { view: v } : {})}"${(v === 'donor') === donorView ? ' aria-current="page" style="background:#1B2A4A;color:#fff"' : ''}>${l}</a>`).join('')}</nav>${donorView ? `<p class="ma-note ma-noprint" style="margin:0 0 14px">Mother’s Day Out pays its own way from tuition, so this view sets it aside to show how gifts and the church’s other income are used.</p>` : ''}`;
+  const mdoNetAll = mdoSplit.mdoIncome - mdoSplit.mdoCost;
+  const builder = fullBuilder;
+  const viewSwitch = `<nav class="segmented ma-noprint" aria-label="Which slides" style="margin:0 0 16px;display:inline-flex;gap:4px">${[['both', 'All slides'], ['whole', 'Whole budget'], ['donor', 'Donor dollars']].map(([v, l]) => `<a href="${pageHref('congregation', target, v !== 'both' ? { view: v } : {})}"${v === view ? ' aria-current="page" style="background:#1B2A4A;color:#fff"' : ''}>${l}</a>`).join('')}</nav><p class="ma-note ma-noprint" style="margin:0 0 14px">Donor-dollar slides set Mother’s Day Out aside: its tuition pays for it, and it adds to the congregation’s ministry rather than drawing on gifts.</p>`;
   const income = builder.lines.filter((l) => l.classification === 'Income').reduce((t, l) => t + (l.plan?.plannedAmountCents || 0), 0);
   const expenses = builder.lines.filter((l) => l.classification !== 'Income').reduce((t, l) => t + (l.plan?.plannedAmountCents || 0), 0);
   const head = `<div class="ma-noprint">${missionChips('congregation', target, { admin: canEdit })}
@@ -85,9 +89,12 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
   const org = '<div class="cv-org">Timothy Lutheran Church<br><span class="cv-serif" style="font-size:17px">From our Neighborhood to the Nations</span></div>';
   const slides = [];
 
-  // Slide 1: the mission dollar.
-  if (data) {
-    const model = missionModel(builder, data);
+  // The mission dollar: for the whole budget, and for gifts without Mother's Day Out.
+  const missionModes = [showWhole ? { b: fullBuilder, donor: false } : null, showDonor && (mdoSplit.mdoCost || mdoSplit.mdoIncome || !showWhole) ? { b: mdoSplit.church, donor: true } : null].filter(Boolean);
+  for (const mode of missionModes) {
+    if (!data) break;
+    const donorView = mode.donor;
+    const model = missionModel(mode.b, data);
     const aligned = sum(model.totals);
     if (aligned > 0) {
       const cents = distribute(100, model.totals.map((v) => Math.max(0, v)));
@@ -96,7 +103,7 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
       const staffCents = model.total ? Math.round((model.staffPool / model.total) * 100) : 0;
       const strip = MISSION_GOALS.map(([, l], i) => (cents[i] ? `<div style="width:${cents[i]}%;background:${PRESENT_COLORS[i]}"><b>${cents[i]}¢</b>${cents[i] >= 12 ? l : ''}</div>` : '')).join('');
       slides.push(`<section class="cv-slide" aria-label="How your gifts do the mission">${rule}<div class="cv-body">
-        <div class="cv-head"><div><span class="cv-eyebrow">${target} ${donorView ? 'ministry budget, without Mother’s Day Out' : 'Budget'} · ${money(model.total)}</span><h2 class="cv-serif">How your gifts do the mission</h2><p class="cv-lede">Every line in our budget serves one of four Ends. Here is where a dollar goes.</p></div>${org}</div>
+        <div class="cv-head"><div><span class="cv-eyebrow">${target} ${donorView ? 'ministry budget, without Mother’s Day Out' : 'Budget'} · ${money(model.total)}</span><h2 class="cv-serif">${donorView ? 'How your gifts do the mission' : 'How the whole budget does the mission'}</h2><p class="cv-lede">${donorView ? `Your gifts carry the church’s ministry. Mother’s Day Out pays its own way${mdoNetAll > 0 ? ` and adds ${money(mdoNetAll)} to it` : ''}, so it is set aside here. Here is where a gift dollar goes.` : 'Every line in our budget serves one of four Ends, Mother’s Day Out included. Here is where a dollar goes.'}</p></div>${org}</div>
         <div class="cv-dollar" role="img" aria-label="${e(`Of every dollar: ${MISSION_GOALS.map(([, l], i) => `${l} ${cents[i]} cents`).join(', ')}`)}">${strip}</div>
         <div class="cv-ends">${MISSION_GOALS.map(([, l, sub], i) => `<section class="cv-end" style="background:${PRESENT_COLORS[i]}"><div><h3 class="cv-serif">${l}</h3><span class="cv-eyebrow" style="color:#1E2D4A;font-size:12px">${sub}</span></div>
           <div class="cv-amt"><b>${money(model.totals[i])}</b><span>${cents[i]}¢ of every dollar</span></div>
@@ -108,7 +115,9 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
   }
 
   // Slide 2 (donor view): where gifts come from and what they carry.
-  if (donorView) {
+  let donorSlide = '';
+  if (showDonor) {
+    const builder = mdoSplit.church;
     const incomeGroups = sideGroups(builder, layout, true);
     const lay = layout || normalizeBoardLayout(null);
     const giftLines = incomeGroups.filter((g) => DONOR_KEYS.includes(g.key)).flatMap((g) => g.items)
@@ -124,7 +133,7 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
     const otherTotal = sum(support.map((x) => x.plan));
     const gap = gifts + otherTotal - ministry;
     const giftShare = ministry > 0 ? Math.round((gifts / ministry) * 100) : 0;
-    slides.push(`<section class="cv-slide" aria-label="How gifts are used">${rule}<div class="cv-body">
+    donorSlide = (`<section class="cv-slide" aria-label="How gifts are used">${rule}<div class="cv-body">
       <div class="cv-head"><div><span class="cv-eyebrow">${target} proposed budget · Donor dollars</span><h2 class="cv-serif">What your gifts carry</h2><p class="cv-lede">Gifts of ${money(gifts)} carry about ${giftShare}% of the ${money(ministry)} we plan to spend on ministry. Mother’s Day Out pays its own way${mdoNet > 0 ? ` and adds ${money(mdoNet)}` : ''}; endowments, rent and fundraisers help with the rest${gap < 0 ? `, leaving a gap of ${money(-gap)} to close together.` : '.'}</p></div>${org}</div>
       <div class="cv-two">
         <div class="cv-panel"><h3>Gifts · ${money(gifts)}</h3>${hbars(giftLines, '#2E7EA6', builder.baseYear)}
@@ -140,7 +149,7 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
   const revenueGroups = sideGroups(builder, layout, true);
   const expenseGroups = sideGroups(builder, layout, false);
   const gap = income - expenses;
-  if (!donorView) slides.push(`<section class="cv-slide" aria-label="Where the money comes from and where it goes">${rule}<div class="cv-body">
+  if (showWhole) slides.push(`<section class="cv-slide" aria-label="Where the money comes from and where it goes">${rule}<div class="cv-body">
     <div class="cv-head"><div><span class="cv-eyebrow">${target} proposed budget</span><h2 class="cv-serif">Where it comes from, where it goes</h2><p class="cv-lede">${money(income)} expected in, ${money(expenses)} planned out${gap === 0 ? ', balanced.' : gap > 0 ? `, ${money(gap)} to spare.` : `: a gap of ${money(-gap)} to close together.`}</p></div>${org}</div>
     <div class="cv-two">
       <div class="cv-panel"><h3>Where it comes from · ${money(income)}</h3>${hbars(revenueGroups, '#2E7EA6', builder.baseYear)}</div>
@@ -148,6 +157,8 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
     </div>
     <div class="cv-foot"><p style="margin:0">Bars show the ${target} proposal. The dark mark on each bar is the ${builder.baseYear} budget, and the percentage after each amount is the change from it.</p><small>Proposed budget for discussion</small></div>
   </div></section>`);
+
+  if (donorSlide) slides.push(donorSlide);
 
   // Slide 3: since 2022.
   if (trend) {

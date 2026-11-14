@@ -67,6 +67,7 @@ import { serveFacilityFile } from './facility-files.js';
 import { FormValidationError } from './form-fields.js';
 import { MISSION_LIVE_JS, readMission, saveMission, canManageMission, plannerWorkers } from './mission-alignment.js';
 import { MISSION_STYLES, missionValueLabels } from './mission-ui.js';
+import { DISTRICT_STYLES, renderDistrictSupportPage } from './district-support.js';
 import { renderMissionPage, renderStaffTimePage } from './mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage } from './mission-visuals.js';
 import { buildTrendModel, loadTrendYears, renderTrendsPage as renderBudgetTrendsPage, trendStartYear } from './budget-trends.js';
@@ -262,7 +263,7 @@ const SECURITY_HEADERS = Object.freeze({
 // it) and any image embedded in a letter template (a data: URL). Images only; still no script.
 const DONOR_LETTERS_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: https://connect.timothystl.org; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 // The Budget planner's edit form loads one script from this Worker (live totals); nothing else.
-const MISSION_PAGE_IDS = new Set(['mission', 'staff-time', 'mission-report', 'congregation', 'trends']);
+const MISSION_PAGE_IDS = new Set(['mission', 'staff-time', 'mission-report', 'congregation', 'trends', 'district']);
 const BUDGET_PLANNER_PAGE_CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 const PLANNER_PAGE_CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 
@@ -1841,6 +1842,7 @@ function renderSectionBody(ctx) {
       const prior = ctx.missionPrior && !isSyntheticUnavailable(ctx.missionPrior) ? ctx.missionPrior : null;
       return renderMissionPage({ ...shared, prior, canEdit: true });
     }
+    if (page.id === 'district') return renderDistrictSupportPage({ ...shared, canEdit: admin });
     if (page.id === 'staff-time') return renderStaffTimePage({ ...shared, canEdit: admin, workers: ctx.plannerWorkers });
     if (page.id === 'mission-report') return renderMissionReportPage({ ...shared, admin, canSeePay: roleResult.ok && COMPENSATION_LIVE_ALLOWED_ROLES.includes(roleResult.role) });
     const trend = ctx.budgetTrend && !isSyntheticUnavailable(ctx.budgetTrend) ? ctx.budgetTrend : null;
@@ -2071,7 +2073,7 @@ function renderShell(ctx) {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Timothy Finance${production ? '' : ' — Staging'}</title>
   <link rel="icon" href="/assets/finance-mark.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="/assets/finance-icon-192.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#052241"><meta name="apple-mobile-web-app-title" content="Finance"><meta name="apple-mobile-web-app-capable" content="yes">
-  <style>${SHELL_STYLES}${HEALTH_STYLES}${HEALTH_PARITY_STYLES}${FACILITIES_STYLES}${HR_STYLES}${PAYROLL_STYLES}${GIFT_BATCH_STYLES}${GIFT_TRANSACTIONS_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_REPORTS_STYLES}${DONOR_LETTERS_STYLES}${PLEDGE_STYLES}${GIVING_ANALYTICS_STYLES}${PLANNING_V3_STYLES}${ACCESS_STYLES}${BUDGET_BUILDER_STYLES}${MISSION_STYLES}${ACQUISITION_STYLES}${PROPERTY_BOOKS_STYLES}${PROPERTY_CHART_STYLES}${BALANCE_STYLES}${FUND_CLEANUP_STYLES}${CHURCH_YEAR_STYLES}</style>
+  <style>${SHELL_STYLES}${HEALTH_STYLES}${HEALTH_PARITY_STYLES}${FACILITIES_STYLES}${HR_STYLES}${PAYROLL_STYLES}${GIFT_BATCH_STYLES}${GIFT_TRANSACTIONS_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_REPORTS_STYLES}${DONOR_LETTERS_STYLES}${PLEDGE_STYLES}${GIVING_ANALYTICS_STYLES}${PLANNING_V3_STYLES}${ACCESS_STYLES}${BUDGET_BUILDER_STYLES}${MISSION_STYLES}${DISTRICT_STYLES}${ACQUISITION_STYLES}${PROPERTY_BOOKS_STYLES}${PROPERTY_CHART_STYLES}${BALANCE_STYLES}${FUND_CLEANUP_STYLES}${CHURCH_YEAR_STYLES}</style>
 </head>
 <body${councilPreview ? ' class="council-preview"' : ''}>
   <header class="app-header">

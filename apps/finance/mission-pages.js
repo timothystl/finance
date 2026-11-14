@@ -11,7 +11,7 @@ const METHOD_BADGES = {
   partial: ['warn', 'Partly split'], needs: ['warn', 'Needs a split'],
 };
 const badge = (kind, text) => `<span class="ma-badge ${kind}">${kind === 'warn' ? '<span class="ma-dot" style="background:#B07A00"></span>' : ''}${e(text)}</span>`;
-const RETURN_PAGES = { 'staff-shares': 'staff-time', lines: 'mission', line: 'mission', building: 'mission', staff: 'staff-time', 'staff-add': 'staff-time', 'staff-remove': 'staff-time', 'staff-import': 'staff-time', 'staff-benefits': 'staff-time' };
+const RETURN_PAGES = { district: 'district', 'staff-shares': 'staff-time', lines: 'mission', line: 'mission', building: 'mission', staff: 'staff-time', 'staff-add': 'staff-time', 'staff-remove': 'staff-time', 'staff-import': 'staff-time', 'staff-benefits': 'staff-time' };
 const hiddenYear = (builder, data, action) => `<input type="hidden" name="return_page" value="${RETURN_PAGES[action]}"><input type="hidden" name="return_target" value="${builder.targetYear}"><input type="hidden" name="target" value="${builder.targetYear}"><input type="hidden" name="base" value="${builder.baseYear}"><input type="hidden" name="revision" value="${data.revision}"><input type="hidden" name="action" value="${action}">`;
 const pctValue = (bp) => (bp ? String(bp / 100) : '');
 const hoursText = (h) => (h == null ? '' : String(h / 100));

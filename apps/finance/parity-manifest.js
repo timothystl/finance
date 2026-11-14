@@ -45,6 +45,7 @@ export const FINANCE_PARITY_SECTIONS = Object.freeze([
     pages: [
       { id: 'council', label: 'Council report', status: 'live' },
       { id: 'trends', label: 'Trends', status: 'live' },
+      { id: 'district', label: 'District support', status: 'live' },
       { id: 'year-over-year', label: 'Year over year', status: 'live' },
       { id: 'pledges', label: 'Pledges', status: 'live' },
       { id: 'pledge-list', label: 'Pledge list', status: 'live' },

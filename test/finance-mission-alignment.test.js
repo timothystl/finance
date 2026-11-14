@@ -9,6 +9,8 @@ import { buildTrendModel, change } from '../apps/finance/budget-trends.js';
 import worker from '../apps/finance/shell.js';
 import { renderBudgetBuilderPage, plannerCsv, buildPlannerModel, plannerParams } from '../apps/finance/planning-builder-pages.js';
 import { missionValueLabels } from '../apps/finance/mission-ui.js';
+import { districtComparison, renderDistrictSupportPage } from '../apps/finance/district-support.js';
+import { applyDistrict } from '../apps/finance/mission-alignment.js';
 
 const line = (category, n, classification = 'Expenses') => ({ category, name: category.split(':').pop(), classification, baseBudgetCents: Math.round(n * 0.9), projectedCents: Math.round(n * 0.95), plan: { plannedAmountCents: n } });
 const builder = {
@@ -247,7 +249,8 @@ describe('mission pages', () => {
   });
   it('turns the plan into cents of every dollar for the congregation, without staff pay by person', () => {
     const data = state(); data.lines['Expenses:Utilities'] = { method: 'spread', shares: [0, 0, 0, 0], note: '' };
-    const html = renderCongregationPage({ builder, data, params: params(), canEdit: false });
+    const html = renderCongregationPage({ builder, data, params: params('view=whole'), canEdit: false });
+    expect(renderCongregationPage({ builder, data, params: params(), canEdit: false })).toContain('What your gifts carry');
     const cents = [...html.matchAll(/<b>(\d+)¢<\/b>/g)].map((m) => Number(m[1]));
     expect(cents.reduce((a, b) => a + b, 0)).toBe(100);
     expect(html).toContain('How your gifts do the mission');
@@ -290,6 +293,33 @@ describe('typical week on budget lines and seasonal work', () => {
     const report = renderMissionReportPage({ builder, data: saved, canSeePay: false });
     expect(report).toContain('Staff time on budget lines');
     expect(report).not.toContain('Cost of that time');
+  });
+});
+
+describe('district support', () => {
+  const b = { targetYear: 2027, baseYear: 2026, lines: [
+    { ...line('Expenses:50 Program Expenses:502 Synod/District Support:50216 District-Synod Support', 1800000), baseBudgetCents: 1800000 },
+    line('Expenses:50 Program Expenses:502 Synod/District Support:50215 District Support Assesment', 40000), line('Expenses:Worship', 500000)] };
+  it('compares the plan with the benchmarks per congregation and per member', () => {
+    const data = applyDistrict(emptyMission(), { baptized: '302', confirmed: '243' }).data;
+    const c = districtComparison(b, data.district);
+    expect(c.total).toBe(1840000);
+    expect(c.timothy.perBaptized).toBe(6093); // $60.93
+    expect(c.timothy.perConfirmed).toBe(7572);
+    expect(c.atRate(c.benchmarks.find((x) => x.key === 'mo'), c.measures[2])).toBe(3061 * 243);
+    const html = renderDistrictSupportPage({ builder: b, data, canEdit: true });
+    expect(html).toContain('$60.93');
+    expect(html).toContain('$24.26');
+    expect(html).toContain('Northern Illinois');
+    expect(html).toContain('above the highest district average (Michigan)');
+    expect(html).toContain('Missouri District');
+    expect(html).toContain('50216 District-Synod Support');
+    expect(html).not.toContain('Worship');
+  });
+  it('validates counts and benchmark figures', () => {
+    expect(() => applyDistrict(emptyMission(), { baptized: '200', confirmed: '243' })).toThrow(/cannot be more/);
+    expect(() => applyDistrict(emptyMission(), { baptized: 'many' })).toThrow(/whole number/);
+    expect(applyDistrict(emptyMission(), { mo_confirmed: '31.50' }).data.district.benchmarks.find((x) => x.key === 'mo').perConfirmed).toBe(3150);
   });
 });
 
@@ -339,6 +369,12 @@ describe('donor dollars view', () => {
     const whole = renderCongregationPage({ builder: b, data, params: new URLSearchParams() });
     expect(whole).toContain('Where it comes from, where it goes');
     expect(whole).toContain('Donor dollars');
+    // By default both views: the whole budget and gifts without Mother's Day Out.
+    expect(whole).toContain('How the whole budget does the mission');
+    expect(whole).toContain('How your gifts do the mission');
+    expect(whole).toContain('adds $200,000');
+    expect(whole).toContain('What your gifts carry');
+    expect(renderCongregationPage({ builder: b, data, params: new URLSearchParams('view=whole') })).not.toContain('What your gifts carry');
   });
 });
 

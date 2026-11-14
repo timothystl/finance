@@ -79,6 +79,7 @@ export function normalizeMission(raw) {
   const bullets = raw.story?.bullets;
   if (Array.isArray(bullets) && bullets.length === 4) out.story.bullets = bullets.map((b) => (Array.isArray(b) ? b.map((s) => String(s).slice(0, 80)).filter(Boolean).slice(0, 6) : []));
   out.story.note = String(raw.story?.note || '').slice(0, MAX_NOTE);
+  out.district = districtFrom(raw.district);
   return out;
 }
 
@@ -106,6 +107,30 @@ function leadsFrom(raw, ids) {
     if (Object.keys(entry).length) out[String(c)] = entry;
   }
   return out;
+}
+
+// District support comparison: Timothy's member counts for the year (totals only) and the
+// benchmark averages, in cents per congregation / baptized member / confirmed member.
+// `where` names the district behind a lowest/highest figure, per measure.
+export const DISTRICT_BENCHMARKS = [
+  { key: 'mo', label: 'Missouri District', perCongregation: 899900, perBaptized: 2426, perConfirmed: 3061 },
+  { key: 'all', label: 'Combined 29-district average', perCongregation: 921000, perBaptized: 3051, perConfirmed: 3858 },
+  { key: 'median', label: 'Median district', perCongregation: 899900, perBaptized: 3173, perConfirmed: 4045 },
+  { key: 'mean', label: 'Average of the districts', perCongregation: 896400, perBaptized: 3470, perConfirmed: 4345 },
+  { key: 'low', label: 'Lowest district', range: true, perCongregation: 430300, perBaptized: 1832, perConfirmed: 2349, where: { perCongregation: 'Eastern', perBaptized: 'Northern Illinois', perConfirmed: 'Northern Illinois' } },
+  { key: 'high', label: 'Highest district', range: true, perCongregation: 1342600, perBaptized: 6956, perConfirmed: 8710, where: { perCongregation: 'Michigan', perBaptized: 'Wyoming', perConfirmed: 'Wyoming' } },
+];
+// Total support a district receives in a year, for context only (not comparable to one congregation).
+export const DISTRICT_TOTALS = { low: { cents: 28050500, where: 'New Jersey' }, high: { cents: 467232100, where: 'Michigan' }, mean: 158541400, median: 142986600 };
+const count = (v) => (Number.isInteger(v) && v > 0 && v < 100000 ? v : null);
+const centsOk = (v) => Number.isInteger(v) && v >= 0 && v < 1e10;
+export function districtFrom(raw) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const benchmarks = DISTRICT_BENCHMARKS.map((b) => {
+    const saved = (Array.isArray(r.benchmarks) ? r.benchmarks : []).find((x) => x && x.key === b.key) || {};
+    return { ...b, ...Object.fromEntries(['perCongregation', 'perBaptized', 'perConfirmed'].filter((k) => centsOk(saved[k])).map((k) => [k, saved[k]])) };
+  });
+  return { baptized: count(r.baptized), confirmed: count(r.confirmed), benchmarks };
 }
 
 // Earlier "time on this line" entries are kept as they were saved but no longer counted.
@@ -576,7 +601,33 @@ export function applyStaffShares(data, form) {
   return { data: { ...data, staff }, params: { changed: String(changed) } };
 }
 
+function moneyCents(raw, label) {
+  const v = String(raw ?? '').replace(/[$,\s]/g, '');
+  if (v === '') return null;
+  if (!/^\d{1,8}(\.\d{1,2})?$/.test(v)) fail(`${label} must be a dollar amount.`);
+  return Math.round(Number(v) * 100);
+}
+export function applyDistrict(data, form) {
+  const whole = (raw, label) => {
+    const v = String(raw ?? '').replace(/[,\s]/g, '');
+    if (v === '') return null;
+    if (!/^\d{1,5}$/.test(v) || Number(v) < 1) fail(`${label} must be a whole number.`);
+    return Number(v);
+  };
+  const benchmarks = DISTRICT_BENCHMARKS.map((b) => ({
+    ...b,
+    perCongregation: moneyCents(form[`${b.key}_congregation`], `${b.label} per congregation`) ?? b.perCongregation,
+    perBaptized: moneyCents(form[`${b.key}_baptized`], `${b.label} per baptized member`) ?? b.perBaptized,
+    perConfirmed: moneyCents(form[`${b.key}_confirmed`], `${b.label} per confirmed member`) ?? b.perConfirmed,
+  }));
+  const baptized = whole(form.baptized, 'Baptized members');
+  const confirmed = whole(form.confirmed, 'Confirmed members');
+  if (baptized && confirmed && confirmed > baptized) fail('Confirmed members cannot be more than baptized members.');
+  return { data: { ...data, district: { baptized, confirmed, benchmarks } }, params: {} };
+}
+
 const ACTIONS = {
+  district: { run: applyDistrict, page: 'district' },
   lines: { run: applyLines, page: 'mission' },
   'staff-shares': { run: applyStaffShares, page: 'staff-time' },
   line: { run: applyLine, page: 'mission' },
