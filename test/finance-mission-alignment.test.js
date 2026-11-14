@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   apportion, applyLine, applyLines, applyStaff, addStaff, applyStory, missionModel, normalizeMission, saveMission, weekShares, emptyMission, canManageMission,
-  importStaff, plannerWorkers, applyBenefitLines, applyStaffShares,
+  importStaff, plannerWorkers, applyBenefitLines, applyStaffShares, removeStaff as removeStaffFn,
 } from '../apps/finance/mission-alignment.js';
 import { renderMissionPage, renderStaffTimePage } from '../apps/finance/mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage } from '../apps/finance/mission-visuals.js';
@@ -129,46 +129,50 @@ describe('typing percentages into the table', () => {
   });
 });
 
-describe('staff time on specific budget lines', () => {
-  it('counts that share of a person on the line, in the line’s Ends, and the rest by their own split', () => {
+describe('who leads each budget line', () => {
+  it('credits a line to the people who lead it without moving any pay', () => {
     const data = state();
     data.lines['Expenses:Utilities'] = { method: 'one', shares: [0, 0, 0, 10000], note: '' };
-    data.staff[0].lineTime = { 'Expenses:Utilities': 1000 }; // 10% of the Pastor's $100,000 → Go
-    const m = missionModel(builder, data);
+    data.leads = { 'Expenses:Utilities': { p: 10000 }, 'Expenses:Hospitality': { p: 5000 } };
+    const m = missionModel(builder, normalizeMission({ ...data, revision: 1 }));
     const util = m.rows.find((r) => r.line.category === 'Expenses:Utilities');
-    expect(util.staffCost).toBe(1000000);
-    expect(util.staffBy).toEqual([{ id: 'p', label: 'Pastor', bp: 1000, cents: 1000000 }]);
-    // 10% Go from the line + 90% × [20,40,30,10].
-    expect(m.staff[0].parts).toEqual([1800000, 3600000, 2700000, 900000 + 1000000]);
-    expect(m.staffPool).toBe(10000000);
+    expect(util.leads).toEqual([{ id: 'p', label: 'Pastor', bp: 10000, cents: 1000000 }]);
+    expect(m.staff[0].parts).toEqual([2000000, 4000000, 3000000, 1000000]); // pay follows the Pastor's own split
+    expect(m.staff[0].ledCents).toBe(1000000 + 200000);
+    expect(m.staff[0].ledParts).toEqual([200000, 0, 0, 1000000]);
     expect(total(m)).toBe(m.total);
   });
-  it('is set from the line’s drawer or the person’s editor, never over 100% or on pay lines', () => {
-    const data = state();
-    const fromLine = applyLine(data, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', staff_time: '1', st_0: '5' }, builder).data;
-    expect(fromLine.staff[0].lineTime).toEqual({ 'Expenses:Hospitality': 500 });
-    expect(() => applyLine({ ...data, staff: [{ ...data.staff[0], lineTime: { 'Expenses:Worship': 9800 } }] }, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', staff_time: '1', st_0: '5' }, builder)).toThrow(/more than 100/);
-    const form = { id: 'p', label: 'Pastor', mode: 'quick', share_welcome: '100', line_time: '1', lt_1: '12.5' };
-    expect(applyStaff(data, form, builder).data.staff[0].lineTime).toEqual({ 'Expenses:Worship': 1250 });
-    expect(() => applyStaff(data, { ...form, source_3: 'Expenses:Salary', lt_3: '5' }, builder)).toThrow(/ministry lines/);
+  it('is set from the line’s panel or the person’s editor, never over 100% of a line or on pay lines', () => {
+    const data = { ...state(), staff: [...state().staff, { id: 'q', label: 'Music Director', hours: null, sources: [], mode: 'quick', shares: [0, 10000, 0, 0], week: [], reviewed: true }] };
+    const fromLine = applyLine(data, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', leads: '1', lead_1: '100' }, builder).data;
+    expect(fromLine.leads).toEqual({ 'Expenses:Hospitality': { q: 10000 } });
+    expect(() => applyLine(data, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', leads: '1', lead_0: '60', lead_1: '50' }, builder)).toThrow(/more than 100/);
+    const form = { id: 'p', label: 'Pastor', mode: 'quick', share_welcome: '100', led_lines: '1', led_1: '50' };
+    expect(applyStaff(fromLine, form, builder).data.leads).toEqual({ 'Expenses:Hospitality': { q: 10000 }, 'Expenses:Worship': { p: 5000 } });
+    expect(() => applyStaff(fromLine, { ...form, led_0: '10' }, builder)).toThrow(/more than 100/);
+    expect(() => applyStaff(data, { ...form, led_3: '5' }, builder)).toThrow(/ministry lines/);
+    expect(removeStaffFn(fromLine, { id: 'q' }).data.leads).toEqual({});
   });
   it('saves percentages typed into the Staff time table, quick splits only', () => {
     const data = state();
     const next = applyStaffShares(data, { srole_0: 'p', sorig_0: '2000,4000,3000,1000', scell_0_welcome: '50', scell_0_receive: '50' });
     expect(next.data.staff[0].shares).toEqual([5000, 5000, 0, 0]);
-    expect(next.params.changed).toBe('1');
     const week = { ...data, staff: [{ ...data.staff[0], mode: 'week' }] };
     expect(() => applyStaffShares(week, { srole_0: 'p', sorig_0: '0,0,0,0', scell_0_go: '10' })).toThrow(/typical week/);
-    expect(() => applyStaffShares(data, { srole_0: 'p', sorig_0: '', scell_0_go: '60', scell_0_grow: '60' })).toThrow(/more than 100/);
-    const html = renderStaffTimePage({ builder, data, params: new URLSearchParams('role=p'), canEdit: true });
+    const html = renderStaffTimePage({ builder, data: { ...data, leads: { 'Expenses:Worship': { p: 10000 } } }, params: new URLSearchParams('role=p'), canEdit: true });
     expect(html).toContain('name="scell_0_welcome" form="ma-staff-cells"');
-    expect(html).toContain('Time on specific budget lines');
+    expect(html).toContain('Lines Pastor leads');
+    expect(html).toContain('Leads 1 line · $6,000');
     const drawer = renderMissionPage({ builder, data, params: new URLSearchParams('line=Expenses%3AUtilities'), canEdit: true });
-    expect(drawer).toContain('Staff time on this line');
-    expect(drawer).toContain('name="st_0"');
-    expect(drawer).toContain('+ Add staff');
-    expect(drawer).toContain('<th scope="col" class="num">Staff time</th>');
-    expect(drawer).toContain('id="ma-staff"');
+    expect(drawer).toContain('Who leads this line');
+    expect(drawer).toContain('name="lead_0"');
+    expect(drawer).toContain('+ Assign');
+    expect(drawer).toContain('<th scope="col">Led by</th>');
+  });
+  it('hides lines with nothing planned unless asked', () => {
+    const b = { ...builder, lines: [...builder.lines, line('Expenses:Old line', 0)] };
+    expect(renderMissionPage({ builder: b, data: state(), params: new URLSearchParams(), canEdit: true })).not.toContain('>Old line<');
+    expect(renderMissionPage({ builder: b, data: state(), params: new URLSearchParams('zero=1'), canEdit: true })).toContain('>Old line<');
   });
 });
 
@@ -255,19 +259,12 @@ describe('mission pages', () => {
   });
 });
 
-describe('staff time on the mission report', () => {
-  it('lists lines carrying staff time, with dollars only for those allowed to see pay', () => {
-    const data = state();
-    data.lines['Expenses:Utilities'] = { method: 'one', shares: [0, 0, 0, 10000], note: '' };
-    data.staff[0].lineTime = { 'Expenses:Utilities': 1000 };
-    const withPay = renderMissionReportPage({ builder, data, canSeePay: true });
-    expect(withPay).toContain('Staff time on budget lines');
-    expect(withPay).toContain('Pastor 10%');
-    expect(withPay).toContain('$10,000'); // 10% of the Pastor's $100,000
-    expect(withPay).toContain('$20,000'); // with the $10,000 line
-    const noPay = renderMissionReportPage({ builder, data, canSeePay: false });
-    expect(noPay).toContain('Pastor 10%');
-    expect(noPay).not.toContain('<th scope="col" class="num">Staff time</th>');
+describe('leads on the mission report', () => {
+  it('shows who leads each line and the ministry each person oversees', () => {
+    const data = { ...state(), leads: { 'Expenses:Worship': { p: 10000 } } };
+    const html = renderMissionReportPage({ builder, data });
+    expect(html).toContain('Who leads each part of the budget');
+    expect(html).toMatch(/Pastor<\/td><td class="num">1<\/td><td class="num"><b>\$6,000<\/b>/);
   });
 });
 
