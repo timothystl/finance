@@ -179,9 +179,23 @@ function storyEditor(builder, data, layout) {
     </form></details>`;
 }
 
+// Lines that carry part of a person's time. Dollars only for viewers allowed to see compensation,
+// since one person's share on one line would otherwise reveal their pay; everyone else sees who and
+// how much of their time.
+function staffLinesPanel(model, lay, canSeePay) {
+  const rows = model.rows.filter((r) => !r.isSource && r.staffCost > 0).sort((a, b) => b.staffCost - a.staffCost);
+  if (!rows.length) return '';
+  const endText = (r) => (r.status === 'spread' ? 'Like the rest of the budget' : MISSION_GOALS.map(([, l], i) => (r.shares[i] ? `${l}${r.shares[i] < FULL ? ` ${pct0(r.shares[i])}` : ''}` : '')).filter(Boolean).join(' · ') || 'Not yet aligned');
+  const totalStaff = sum(rows.map((r) => r.staffCost));
+  return `<section class="cv-panel"><div class="ma-section-head"><h3>Staff time on budget lines</h3><span class="ma-muted">The share of each person’s year given to a line. That part of their pay and benefits counts on the line and follows its Ends.</span></div>
+    <table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col">Staff and share of their time</th>${canSeePay ? '<th scope="col" class="num">Line budget</th><th scope="col" class="num">Staff time</th><th scope="col" class="num">Full cost</th>' : ''}<th scope="col">Counts toward</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td>${r.staffBy.map((x) => `${e(x.label)} ${pct0(x.bp)}`).join(', ')}</td>${canSeePay ? `<td class="num">${money(r.cents)}</td><td class="num">${money(r.staffCost)}</td><td class="num"><b>${money(r.cents + r.staffCost)}</b></td>` : ''}<td>${e(endText(r))}</td></tr>`).join('')}
+    </tbody>${canSeePay ? `<tfoot><tr><td colspan="3">All lines with staff time</td><td class="num">${money(totalStaff)}</td><td class="num">${money(sum(rows.map((r) => r.cents + r.staffCost)))}</td><td></td></tr></tfoot>` : ''}</table></section>`;
+}
+
 // ── Mission report for council ───────────────────────────────────────────────────────────────
 
-export function renderMissionReportPage({ builder, data, layout = null, admin = false, now = new Date() }) {
+export function renderMissionReportPage({ builder, data, layout = null, admin = false, canSeePay = admin, now = new Date() }) {
   const target = builder.targetYear;
   const head = `<div class="ma-noprint">${missionChips('mission-report', target, { admin })}<div class="ma-head"><div><span class="ma-eyebrow">Budget · Mission report</span><h2>Mission alignment report</h2><p class="ma-sub">For council: the FY${target} plan by End, with the reasoning behind shared costs. Use Print for a PDF.</p></div>${yearPicker('mission-report', target, now)}</div></div>`;
   if (!data) return `${head}<p class="status status-error">Mission alignment could not be read. Reload to try again.</p>`;
@@ -211,6 +225,7 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
       <tbody><tr><td>Staff salaries &amp; benefits</td><td class="num">${money(model.staffPool)}</td>${model.staffTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.staffPool - sum(model.staffTotals))}</td></tr>
       <tr><td>Programs &amp; building</td><td class="num">${money(programPool)}</td>${model.programTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(programPool - sum(model.programTotals))}</td></tr></tbody>
       <tfoot><tr><td>Whole budget</td><td class="num">${money(model.total)}</td>${model.totals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.unassigned)}</td></tr></tfoot></table></section>
+    ${staffLinesPanel(model, lay, canSeePay)}
     ${notes.length ? `<section class="cv-panel"><h3>Shared and split lines, and why</h3><table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col" class="num">Budget</th><th scope="col">Split</th><th scope="col">Why</th></tr></thead><tbody>
       ${notes.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td class="num">${money(r.cents)}</td><td>${e(methodText(r))}</td><td>${e(r.note || '—')}</td></tr>`).join('')}</tbody></table></section>` : ''}
     <div class="cv-foot"><small>Timothy Lutheran Church · From our Neighborhood to the Nations</small><small>${model.unassigned ? 'Draft for discussion' : 'Proposed budget'} · planned resource allocations, not measures of ministry impact</small></div>

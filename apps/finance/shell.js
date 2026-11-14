@@ -1839,7 +1839,7 @@ function renderSectionBody(ctx) {
       return renderMissionPage({ ...shared, prior, canEdit: true });
     }
     if (page.id === 'staff-time') return renderStaffTimePage({ ...shared, canEdit: admin, workers: ctx.plannerWorkers });
-    if (page.id === 'mission-report') return renderMissionReportPage({ ...shared, admin });
+    if (page.id === 'mission-report') return renderMissionReportPage({ ...shared, admin, canSeePay: roleResult.ok && COMPENSATION_LIVE_ALLOWED_ROLES.includes(roleResult.role) });
     const trend = ctx.budgetTrend && !isSyntheticUnavailable(ctx.budgetTrend) ? ctx.budgetTrend : null;
     if (page.id === 'congregation') return renderCongregationPage({ ...shared, trend, canEdit: admin });
     if (!trend) return renderDataUnavailablePage({ eyebrow: section.label, heading: page.label, reason: 'The budget history could not be read just now. Reload to try again.' });

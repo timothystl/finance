@@ -253,6 +253,22 @@ describe('mission pages', () => {
   });
 });
 
+describe('staff time on the mission report', () => {
+  it('lists lines carrying staff time, with dollars only for those allowed to see pay', () => {
+    const data = state();
+    data.lines['Expenses:Utilities'] = { method: 'one', shares: [0, 0, 0, 10000], note: '' };
+    data.staff[0].lineTime = { 'Expenses:Utilities': 1000 };
+    const withPay = renderMissionReportPage({ builder, data, canSeePay: true });
+    expect(withPay).toContain('Staff time on budget lines');
+    expect(withPay).toContain('Pastor 10%');
+    expect(withPay).toContain('$10,000'); // 10% of the Pastor's $100,000
+    expect(withPay).toContain('$20,000'); // with the $10,000 line
+    const noPay = renderMissionReportPage({ builder, data, canSeePay: false });
+    expect(noPay).toContain('Pastor 10%');
+    expect(noPay).not.toContain('<th scope="col" class="num">Staff time</th>');
+  });
+});
+
 describe('donor dollars view', () => {
   it('sets Mother’s Day Out aside and shows what gifts carry', () => {
     const b = { targetYear: 2027, baseYear: 2026, lines: [
