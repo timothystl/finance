@@ -37,7 +37,7 @@ describe('callPayrollProxy', () => {
     expect(PAYROLL_RPC_FNS.length).toBe(17);
   });
 
-  it('POSTs to the right RPC path with the shared secret, the forwarded JWT, and the Supabase anon headers', async () => {
+  it('POSTs to the payroll service with staff identity but no upstream database credentials', async () => {
     let capturedRequest;
     const env = envWith(async (req) => {
       capturedRequest = req;
@@ -49,8 +49,8 @@ describe('callPayrollProxy', () => {
     expect(capturedRequest.method).toBe('POST');
     expect(capturedRequest.headers.get('X-Contract-Key')).toBe('test-secret');
     expect(capturedRequest.headers.get('Cf-Access-Jwt-Assertion')).toBe('signed.jwt.here');
-    expect(capturedRequest.headers.get('apikey')).toBeTruthy();
-    expect(capturedRequest.headers.get('Authorization')).toBe(`Bearer ${capturedRequest.headers.get('apikey')}`);
+    expect(capturedRequest.headers.get('apikey')).toBeNull();
+    expect(capturedRequest.headers.get('Authorization')).toBeNull();
     const url = new URL(capturedRequest.url);
     expect(url.pathname).toBe('/sb/rest/v1/rpc/payroll_get_staff');
   });

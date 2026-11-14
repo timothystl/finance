@@ -140,3 +140,17 @@ Comparison matches require external payment, person and fund references, date an
 agreement alone is not migration acceptance. All protected pages, downloads and writes require live
 role verification. If Connect is unavailable, restore its role service rather than enabling cached
 authorization. Existing role-cache rows are inert and need no destructive cleanup for this release.
+
+## Payroll service boundary
+
+Finance's payroll client sends the contract key, staff Access JWT and named payroll arguments to
+Website Admin over `PAYROLL_SERVICE`; it does not hold or send Supabase credentials. Website
+independently checks the active account and payroll_manage, selects its upstream anon identity,
+and injects its server-only payroll secret. The existing 17-function allowlist and period locks
+remain unchanged; no database, setting or permission migration is required.
+
+Release Website's server-selected upstream-header support before this Finance client. The Website
+provider is compatible with both old and new Finance clients. Finance rollback can restore the old
+client at any time; rolling Website back to the old provider requires restoring that old Finance
+client first. Validate using synthetic records; do not approve a real pay period or send payroll
+mail as a smoke test.
