@@ -67,7 +67,7 @@ export function normalizeMission(raw) {
       mode: person.mode === 'week' ? 'week' : 'quick',
       shares: isShares(person.shares) ? [...person.shares] : [0, 0, 0, 0],
       week: (Array.isArray(person.week) ? person.week : []).filter((w) => w && Number.isInteger(w.hours) && w.hours >= 0)
-        .map((w) => ({ activity: String(w.activity || '').slice(0, 80), hours: w.hours, end: w.end === 'spread' ? 'spread' : (Number.isInteger(w.end) && w.end >= 0 && w.end < 4 ? w.end : 'spread') })),
+        .map((w) => ({ activity: String(w.activity || '').slice(0, 80), hours: w.hours, end: weekEnd(w.end), ...(Number.isInteger(w.weeks) && w.weeks >= 1 && w.weeks < 52 ? { weeks: w.weeks } : {}) })),
       reviewed: Boolean(person.reviewed),
       lineTime: lineTimeFrom(person.lineTime),
       ...plannerFields(person),
@@ -109,6 +109,15 @@ function leadsFrom(raw, ids) {
 }
 
 // Earlier "time on this line" entries are kept as they were saved but no longer counted.
+// What a typical-week activity counts toward: an End (0-3), 'spread' across all four, or a budget
+// line ({ line: category }) whose own Ends it then follows.
+function weekEnd(end) {
+  if (end === 'spread') return 'spread';
+  if (Number.isInteger(end) && end >= 0 && end < 4) return end;
+  if (end && typeof end === 'object' && typeof end.line === 'string' && end.line) return { line: end.line.slice(0, 300) };
+  return 'spread';
+}
+
 function lineTimeFrom(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -159,17 +168,33 @@ export const toShares = (values) => (sum(values.map((v) => Math.max(0, v))) ? di
 
 // A typical week: hours per End, with "spread across all four" hours given out in the same
 // proportion as the rest (or evenly when nothing else is set), so overhead credits no End.
-export function weekShares(week) {
+// Hours on a budget line follow that line's Ends (`lineShares(category)` returns them, or null for a
+// line not yet aligned, whose hours are then spread like overhead). `lines` totals hours per line.
+export function weekShares(week, lineShares = () => null) {
   const direct = [0, 0, 0, 0];
   let spread = 0;
-  for (const w of week) { if (w.end === 'spread') spread += w.hours; else direct[w.end] += w.hours; }
+  const lines = {};
+  for (const w of week) {
+    // Seasonal work (VBS, the Christmas Market) is entered as hours in the weeks it happens and the
+    // number of such weeks; it counts as its average over the 52-week year.
+    const hours = w.weeks ? (w.hours * w.weeks) / 52 : w.hours;
+    if (w.end === 'spread') { spread += hours; continue; }
+    if (typeof w.end === 'number') { direct[w.end] += hours; continue; }
+    const c = w.end?.line;
+    if (!c) { spread += hours; continue; }
+    lines[c] = (lines[c] || 0) + hours;
+    const ls = lineShares(c);
+    if (!ls || !sum(ls)) { spread += hours; continue; }
+    ls.forEach((bp, i) => { direct[i] += (hours * bp) / FULL; });
+    spread += (hours * (FULL - sum(ls))) / FULL;
+  }
   const total = sum(direct) + spread;
-  if (!total) return { shares: [0, 0, 0, 0], hours: [0, 0, 0, 0], total: 0, spread: 0 };
+  if (!total) return { shares: [0, 0, 0, 0], hours: [0, 0, 0, 0], total: 0, spread: 0, lines };
   const shares = sum(direct) ? toShares(direct) : [2500, 2500, 2500, 2500];
-  return { shares, hours: shares.map((s) => (total * s) / FULL), total, spread };
+  return { shares, hours: shares.map((s) => (total * s) / FULL), total, spread, lines };
 }
 
-export const staffShares = (person) => (person.mode === 'week' ? weekShares(person.week).shares : person.shares);
+export const staffShares = (person, lineShares) => (person.mode === 'week' ? weekShares(person.week, lineShares).shares : person.shares);
 
 // ── The model every page reads ───────────────────────────────────────────────────────────────
 
@@ -207,15 +232,19 @@ export function missionModel(builder, data) {
     r.parts.forEach((p, i) => { programTotals[i] += p; });
     unassigned += parts[4];
   }
+  // Typical-week hours on a budget line take that line's Ends; a "spread" line follows the lines
+  // aligned directly.
+  const directSpread = toShares(programTotals);
+  const lineSharesOf = (c) => { const r = rowByCategory.get(c); if (!r || !r.entry) return null; if (r.method === 'spread') return directSpread; return sum(r.shares) ? r.shares : null; };
   const staffTotals = [0, 0, 0, 0];
   const staff = data.staff.map((person, index) => {
     const benefitShare = data.staff.length && sum(benefitParts) === benefitPool ? benefitParts[index] : 0;
     const pool = ownPay[index] + benefitShare;
-    const shares = staffShares(person);
+    const shares = staffShares(person, lineSharesOf);
     const parts = apportion(pool, [...shares, FULL - sum(shares)]);
     parts.slice(0, 4).forEach((p, i) => { staffTotals[i] += p; });
     unassigned += parts[4];
-    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, effShares: shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week) };
+    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, effShares: shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week, lineSharesOf) };
   });
   // "Spread like the budget" follows everything that is aligned directly, staff time included.
   const basis = programTotals.map((v, i) => v + staffTotals[i]);
@@ -228,6 +257,22 @@ export function missionModel(builder, data) {
     unassigned += r.unassigned;
   }
   for (const r of rows) if (!r.isSource) r.status = rowStatus(r);
+  // Typical-week hours on budget lines: each person's hours, share of their week and of their cost.
+  for (const r of rows) if (!r.isSource) r.timeBy = [];
+  for (const p of staff) {
+    p.timeOnLines = [];
+    const wr = p.mode === 'week' ? p.weekResult : null;
+    if (!wr || !wr.total) continue;
+    const entries = Object.entries(wr.lines).filter(([c, h]) => h > 0 && rowByCategory.has(c));
+    if (!entries.length) continue;
+    const bps = entries.map(([, h]) => Math.round((h / wr.total) * FULL));
+    const cents = apportion(p.pool, [...bps, Math.max(0, FULL - sum(bps))]);
+    entries.forEach(([c, h], i) => {
+      const item = { category: c, line: rowByCategory.get(c).line, hours: h, bp: bps[i], cents: cents[i] };
+      p.timeOnLines.push(item);
+      rowByCategory.get(c).timeBy.push({ id: p.id, label: p.label, hours: h, bp: bps[i], cents: cents[i] });
+    });
+  }
   // Who leads each line: its share of the line's dollars, and of each End, credited to that person.
   const staffById = new Map(staff.map((p) => { p.ledLines = []; p.ledCents = 0; p.ledParts = [0, 0, 0, 0]; return [p.id, p]; }));
   for (const r of rows) {
@@ -361,11 +406,24 @@ export function applyStaff(data, form, builder) {
       if (!activity && !hours) continue;
       if (!activity) fail('Name each activity that has hours.');
       if (activity.length > 80) fail('Keep activity names to 80 characters.');
-      const end = form[`act_end_${i}`] === 'spread' ? 'spread' : endIndex(form[`act_end_${i}`]);
+      const raw = String(form[`act_end_${i}`] || '');
+      let end = raw === 'spread' ? 'spread' : endIndex(raw);
+      if (raw.startsWith('line:')) {
+        const c = raw.slice(5);
+        const owned = new Set([...data.staff.flatMap((s) => s.sources), ...sources, ...(data.benefitLines || [])]);
+        if (!lines.some((l) => l.category === c) || owned.has(c)) fail(`“${activity}” must count toward a ministry line in this year’s plan.`);
+        end = { line: c };
+      }
       if (end === -1) fail(`Choose what “${activity}” counts toward.`);
-      week.push({ activity, hours: hours || 0, end });
+      const weeksRaw = String(form[`act_weeks_${i}`] ?? '').trim();
+      let weeks = null;
+      if (weeksRaw !== '') {
+        if (!/^\d{1,2}$/.test(weeksRaw) || Number(weeksRaw) < 1 || Number(weeksRaw) > 52) fail(`Weeks a year for “${activity}” must be a whole number from 1 to 52.`);
+        if (Number(weeksRaw) < 52) weeks = Number(weeksRaw);
+      }
+      week.push({ activity, hours: hours || 0, end, ...(weeks ? { weeks } : {}) });
     }
-    if (sum(week.map((w) => w.hours)) > 12000) fail('A typical week cannot be more than 120 hours.');
+    if (sum(week.map((w) => (w.weeks ? (w.hours * w.weeks) / 52 : w.hours))) > 12000) fail('A typical week cannot average more than 120 hours.');
     person.week = week;
   }
   const staff = data.staff.map((s, i) => (i === index ? person : s));
@@ -647,9 +705,20 @@ export function missionLive() {
       const direct = [0, 0, 0, 0];
       let spread = 0;
       form.querySelectorAll('[data-week-row]').forEach((row) => {
-        const h = Number(row.querySelector('[data-week-hours]').value) || 0;
-        const end = row.querySelector('[data-week-end]').value;
-        if (end === 'spread') spread += h; else if (['welcome', 'receive', 'grow', 'go'].includes(end)) direct[['welcome', 'receive', 'grow', 'go'].indexOf(end)] += h;
+        const raw = Number(row.querySelector('[data-week-hours]').value) || 0;
+        const weeksEl = row.querySelector('[data-week-weeks]');
+        const weeks = weeksEl && Number(weeksEl.value) >= 1 && Number(weeksEl.value) < 52 ? Number(weeksEl.value) : 52;
+        const h = (raw * weeks) / 52;
+        const sel = row.querySelector('[data-week-end]');
+        const end = sel.value;
+        if (end === 'spread') spread += h;
+        else if (['welcome', 'receive', 'grow', 'go'].includes(end)) direct[['welcome', 'receive', 'grow', 'go'].indexOf(end)] += h;
+        else if (end.indexOf('line:') === 0) {
+          const opt = sel.options[sel.selectedIndex];
+          const ls = opt && opt.dataset.shares ? opt.dataset.shares.split(',').map(Number) : null;
+          const tot = ls ? ls.reduce((a, b) => a + b, 0) : 0;
+          if (!tot) spread += h; else { ls.forEach((bp, i) => { direct[i] += (h * bp) / FULL; }); spread += (h * (FULL - tot)) / FULL; }
+        }
       });
       const d = direct.reduce((a, b) => a + b, 0);
       const total = d + spread;
@@ -660,11 +729,11 @@ export function missionLive() {
         set('h', ((total * s) / FULL).toFixed(1)); set('pct', Math.round(s / 100) + '%'); set('usd', usd((cents * s) / FULL));
       });
       const sumOut = form.querySelector('[data-week-total]');
-      if (sumOut) sumOut.textContent = String(Math.round(total * 100) / 100);
+      if (sumOut) sumOut.textContent = String(Math.round(total * 10) / 10);
       const badge = form.querySelector('[data-week-badge]');
       if (badge) {
-        const ok = !target || Math.abs(total - target) < 0.01;
-        badge.textContent = !target ? total + ' hours' : ok ? 'Matches ' + target + ' hours' : (total > target ? (total - target).toFixed(2).replace(/\.00$/, '') + ' hours over ' : (target - total).toFixed(2).replace(/\.00$/, '') + ' hours under ') + target;
+        const ok = !target || Math.abs(total - target) < 0.5;
+        badge.textContent = !target ? (Math.round(total * 10) / 10) + ' hours' : ok ? 'Matches ' + target + ' hours' : (total > target ? (total - target).toFixed(1).replace(/\.0$/, '') + ' hours over ' : (target - total).toFixed(1).replace(/\.0$/, '') + ' hours under ') + target;
         badge.className = 'ma-badge ' + (ok ? 'ok' : 'warn');
       }
     };

@@ -259,6 +259,40 @@ describe('mission pages', () => {
   });
 });
 
+describe('typical week on budget lines and seasonal work', () => {
+  it('counts seasonal hours as their yearly average and line hours by the line’s value', () => {
+    const r = weekShares([
+      { activity: 'Teaching', hours: 3000, end: 2 },
+      { activity: 'VBS', hours: 4000, end: 2, weeks: 2 }, // 40 h × 2 weeks ≈ 1.54 h/wk
+      { activity: 'MDO oversight', hours: 300, end: { line: 'MDO' } },
+    ], (c) => (c === 'MDO' ? [7000, 0, 0, 3000] : null));
+    expect(r.total).toBeCloseTo(3000 + 4000 * 2 / 52 + 300, 5);
+    expect(r.lines).toEqual({ MDO: 300 });
+    expect(r.hours[0]).toBeCloseTo((210 / r.total) * r.total, 0); // 70% of MDO's 3 h → Welcome
+  });
+  it('saves budget-line activities and weeks, and shows time on lines', () => {
+    const data = state();
+    data.lines['Expenses:Utilities'] = { method: 'one', shares: [0, 0, 0, 10000], note: '' };
+    const form = { id: 'p', label: 'Pastor', mode: 'week', act_0: 'Preaching', act_hours_0: '36', act_end_0: 'receive', act_1: 'Building oversight', act_hours_1: '4', act_end_1: 'line:Expenses:Utilities', act_2: 'Christmas Market', act_hours_2: '15', act_weeks_2: '4', act_end_2: 'go' };
+    const saved = applyStaff(data, form, builder).data;
+    expect(saved.staff[0].week[1].end).toEqual({ line: 'Expenses:Utilities' });
+    expect(saved.staff[0].week[2].weeks).toBe(4);
+    expect(() => applyStaff(data, { ...form, act_end_1: 'line:Expenses:Salary' }, builder)).toThrow(/ministry line/);
+    expect(() => applyStaff(data, { ...form, act_weeks_2: '60' }, builder)).toThrow(/1 to 52/);
+    const m = missionModel(builder, saved);
+    const util = m.rows.find((r) => r.line.category === 'Expenses:Utilities');
+    expect(util.timeBy[0]).toMatchObject({ id: 'p', hours: 400 });
+    expect(m.staff[0].timeOnLines[0].category).toBe('Expenses:Utilities');
+    const html = renderStaffTimePage({ builder, data: saved, params: new URLSearchParams('role=p'), canEdit: true });
+    expect(html).toContain('A budget line (follows its value)');
+    expect(html).toContain('name="act_weeks_2"');
+    expect(html).toContain('Time on budget lines');
+    const report = renderMissionReportPage({ builder, data: saved, canSeePay: false });
+    expect(report).toContain('Staff time on budget lines');
+    expect(report).not.toContain('Cost of that time');
+  });
+});
+
 describe('leads on the mission report', () => {
   it('shows who leads each line and the ministry each person oversees', () => {
     const data = { ...state(), leads: { 'Expenses:Worship': { p: 10000 } } };
