@@ -44,7 +44,7 @@ export function pie(shares, { size = 170, colors = PRESENT_COLORS, label = '' } 
 export const dot = (i, colors = END_COLORS) => `<span class="ma-dot" style="background:${colors[i]}"></span>`;
 
 // The mission pages, in order, as chips that keep the chosen year.
-export const MISSION_PAGES = [['mission', 'Line items by End'], ['staff-time', 'Staff time'], ['mission-report', 'Mission report'], ['congregation', 'For the congregation'], ['trends', 'Trends']];
+export const MISSION_PAGES = [['mission', 'Line items by End'], ['staff-time', 'Staff time'], ['mission-report', 'Mission report'], ['congregation', 'For the congregation'], ['trends', 'Trends'], ['district', 'District support']];
 export function pageHref(page, target, extra = {}) {
   const q = new URLSearchParams({ section: 'planning', page, target: String(target), ...extra });
   return `/?${q.toString().replace(/&/g, '&amp;')}`;

@@ -3,6 +3,7 @@
 import { escapeHtml as e } from './render-helpers.js';
 import { buildBoardSections, normalizeBoardLayout, accountDisplayName } from './board-layout.js';
 import { GOAL_KEYS, MISSION_GOALS, WEEK_TEMPLATES, lineCents, missionModel, templateWeek, weekShares } from './mission-alignment.js';
+import { personnelPanel, personnelShare } from './mission-visuals.js';
 import { END_COLORS, dot, missionChips, money, pageHref, pct0, pct1, sharesLabel, stackBar, sum, yearPicker } from './mission-ui.js';
 
 const FULL = 10000;
@@ -11,7 +12,7 @@ const METHOD_BADGES = {
   partial: ['warn', 'Partly split'], needs: ['warn', 'Needs a split'],
 };
 const badge = (kind, text) => `<span class="ma-badge ${kind}">${kind === 'warn' ? '<span class="ma-dot" style="background:#B07A00"></span>' : ''}${e(text)}</span>`;
-const RETURN_PAGES = { 'staff-shares': 'staff-time', lines: 'mission', line: 'mission', building: 'mission', staff: 'staff-time', 'staff-add': 'staff-time', 'staff-remove': 'staff-time', 'staff-import': 'staff-time', 'staff-benefits': 'staff-time' };
+const RETURN_PAGES = { district: 'district', 'staff-shares': 'staff-time', lines: 'mission', line: 'mission', building: 'mission', staff: 'staff-time', 'staff-add': 'staff-time', 'staff-remove': 'staff-time', 'staff-import': 'staff-time', 'staff-benefits': 'staff-time' };
 const hiddenYear = (builder, data, action) => `<input type="hidden" name="return_page" value="${RETURN_PAGES[action]}"><input type="hidden" name="return_target" value="${builder.targetYear}"><input type="hidden" name="target" value="${builder.targetYear}"><input type="hidden" name="base" value="${builder.baseYear}"><input type="hidden" name="revision" value="${data.revision}"><input type="hidden" name="action" value="${action}">`;
 const pctValue = (bp) => (bp ? String(bp / 100) : '');
 const hoursText = (h) => (h == null ? '' : String(h / 100));
@@ -239,7 +240,7 @@ export function renderStaffTimePage({ builder, data, layout = null, params, canE
     <form method="POST" action="/api/v1/planning/mission-save" class="ma-year">${hiddenYear(builder, data, 'staff-add')}<label class="field"><span>Add a staff role</span><input name="label" maxlength="60" required placeholder="e.g. Music Director"></label><button type="submit" class="button-outline">Add role</button></form>
   </section>`;
   const person = model.staff.find((p) => p.id === selectedId);
-  return `${head}${statusLines(params)}${params?.get('imported') ? `<p class="status status-ok" role="status">${Number(params.get('imported')) ? `${Number(params.get('imported'))} staff brought in from the compensation planner.` : 'Staff refreshed from the compensation planner.'} Set each person’s time below.</p>` : ''}${plannerPanel({ builder, data, model, workers, layout })}${table}${person ? staffEditor({ builder, data, model, person, params, layout }) : ''}<script src="/mission-alignment/live.js" defer></script>`;
+  return `${head}${statusLines(params)}${params?.get('imported') ? `<p class="status status-ok" role="status">${Number(params.get('imported')) ? `${Number(params.get('imported'))} staff brought in from the compensation planner.` : 'Staff refreshed from the compensation planner.'} Set each person’s time below.</p>` : ''}${plannerPanel({ builder, data, model, workers, layout })}${personnelPanel(personnelShare(builder, data, layout), { year: target, baseYear: builder.baseYear })}${table}${person ? staffEditor({ builder, data, model, person, params, layout }) : ''}<script src="/mission-alignment/live.js" defer></script>`;
 }
 
 // The compensation planner's staff, and the shared benefit lines they draw on.

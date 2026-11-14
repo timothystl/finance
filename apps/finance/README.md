@@ -112,12 +112,19 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   activity can count toward a budget line (its hours follow that line's Ends, shown as time on lines
   on Staff time, Line items by End and the Mission report, with cost only for roles allowed to see
   compensation), and seasonal work takes "weeks a year" and counts as its yearly average.
+- **Staff cost share** (on Staff time and the Mission report): church staff salaries and benefits as a
+  share of all expenses and of church expenses with Mother's Day Out set aside, pay versus benefits,
+  the base-year budget's shares, and all payroll including Mother's Day Out staff.
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
   and each role (percent only, no pay by person), the table, who leads each line and the budget each
   person oversees by End, and the reasons for shared lines.
+- **District support** (anyone who sees the budget; admins enter counts and benchmarks). The plan's
+  District & Synod lines against the Missouri District, the 29-district combined average, the median
+  and average district and the lowest/highest district, per congregation and per baptized and confirmed
+  member (Timothy's member counts are totals entered each year), with a range bar for each measure.
 - **For the congregation** (anyone who sees the budget; admins edit the slide words). Print-ready
   slides: cents of every dollar by End, where income comes from and where it goes against this
-  year's budget, and how the budget has changed since 2022. A *Donor dollars* switch sets Mother's Day Out
+  year's budget, and how the budget has changed since 2022. By default the page shows both views (a switch picks *All slides*, *Whole budget* or *Donor dollars*). The donor view sets Mother's Day Out
   aside (its board category or name, and its tuition, since tuition pays for it) and shows gifts
   (the Donor and Restricted income categories), the other income that supports ministry including
   Mother's Day Out's net, where ministry spending goes, and the cents of each gift dollar per area.
