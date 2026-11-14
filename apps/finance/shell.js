@@ -66,7 +66,7 @@ import { canEditFacilities, describeFacilitiesStatus, ensureFacilitiesSchema, ha
 import { serveFacilityFile } from './facility-files.js';
 import { FormValidationError } from './form-fields.js';
 import { MISSION_LIVE_JS, readMission, saveMission, canManageMission, plannerWorkers } from './mission-alignment.js';
-import { MISSION_STYLES } from './mission-ui.js';
+import { MISSION_STYLES, missionValueLabels } from './mission-ui.js';
 import { renderMissionPage, renderStaffTimePage } from './mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage } from './mission-visuals.js';
 import { buildTrendModel, loadTrendYears, renderTrendsPage as renderBudgetTrendsPage, trendStartYear } from './budget-trends.js';
@@ -1336,7 +1336,10 @@ async function handleBudgetPlannerCsv(request, env, url) {
   if (!read.ok) return plain('The budget plan could not be read from Connect right now.', 502);
   const p = plannerYears(asked, read.builder);
   const builder = draft?.ok ? applyCouncilDraft(read.builder, draft.rows) : read.builder;
-  const csv = plannerCsv(buildPlannerModel(builder, { layout: layoutResult.ok ? normalizeBoardLayout(layoutResult.layout) : null, params: p }), p);
+  const csvModel = buildPlannerModel(builder, { layout: layoutResult.ok ? normalizeBoardLayout(layoutResult.layout) : null, params: p });
+  const mission = await safeSyntheticRead(() => readMission(env.FINANCE_DB, read.builder.targetYear));
+  csvModel.valueLabels = missionValueLabels(read.builder, isSyntheticUnavailable(mission) ? null : mission);
+  const csv = plannerCsv(csvModel, p);
   if (request.method === 'HEAD') return new Response(null, { headers: { 'Content-Type': 'text/csv; charset=utf-8' } });
   return new Response(csv, { headers: {
     'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
@@ -1851,7 +1854,7 @@ function renderSectionBody(ctx) {
     // A council member's Plan figures are their own draft (read back through Connect); without
     // that read they are not offered for editing, so a save never lands on figures they cannot see.
     const draft = ctx.councilBudgetDraft?.ok ? ctx.councilBudgetDraft.rows : null;
-    const shared = { builder: ctx.budgetBuilder.builder, params: ctx.searchParams, layout: ctx.boardLayout || null, councilDraft: draft };
+    const shared = { builder: ctx.budgetBuilder.builder, params: ctx.searchParams, layout: ctx.boardLayout || null, councilDraft: draft, missionAlignment: ctx.missionAlignment && !isSyntheticUnavailable(ctx.missionAlignment) ? ctx.missionAlignment : null };
     if (ctx.searchParams.get('print') === '1') return renderPlannerPrint(shared);
     const plannerOp = ctx.searchParams.get('op') === 'planner';
     return renderBudgetBuilderPage({
@@ -4514,7 +4517,8 @@ export default {
         let budgetBuilder = plannerView ? fetchBudgetBuilder(env, plannerView.target, plannerView.base) : null;
         // Mission alignment: the editors are admin-only; the report and congregation slides read it
         // for anyone who can see the budget. Line items also reads last year's, for "Copy from last year".
-        const missionReads = missionPage && missionPage !== 'trends' && (!['mission', 'staff-time'].includes(missionPage) || (!councilPreview && canManageMission(roleResult)));
+        // The Budget planner reads it too, for its "Value" column.
+        const missionReads = (planningPageId === 'builder') || (missionPage && missionPage !== 'trends' && (!['mission', 'staff-time'].includes(missionPage) || (!councilPreview && canManageMission(roleResult))));
         const missionLoad = missionReads
           ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear)) : null) : null;
         const plannerWorkersLoad = missionPage === 'staff-time' && missionReads

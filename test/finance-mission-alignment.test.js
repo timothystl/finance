@@ -7,6 +7,8 @@ import { renderMissionPage, renderStaffTimePage } from '../apps/finance/mission-
 import { renderCongregationPage, renderMissionReportPage } from '../apps/finance/mission-visuals.js';
 import { buildTrendModel, change } from '../apps/finance/budget-trends.js';
 import worker from '../apps/finance/shell.js';
+import { renderBudgetBuilderPage, plannerCsv, buildPlannerModel, plannerParams } from '../apps/finance/planning-builder-pages.js';
+import { missionValueLabels } from '../apps/finance/mission-ui.js';
 
 const line = (category, n, classification = 'Expenses') => ({ category, name: category.split(':').pop(), classification, baseBudgetCents: Math.round(n * 0.9), projectedCents: Math.round(n * 0.95), plan: { plannedAmountCents: n } });
 const builder = {
@@ -266,6 +268,25 @@ describe('staff time on the mission report', () => {
     const noPay = renderMissionReportPage({ builder, data, canSeePay: false });
     expect(noPay).toContain('Pastor 10%');
     expect(noPay).not.toContain('<th scope="col" class="num">Staff time</th>');
+  });
+});
+
+describe('Budget planner value and share columns', () => {
+  it('shows each line’s End and its share of its subcategory, and each subcategory’s share of the side', () => {
+    const data = state();
+    data.lines['Expenses:Utilities'] = { method: 'split', shares: [2500, 2500, 2500, 2500], note: '' };
+    const html = renderBudgetBuilderPage({ builder, params: new URLSearchParams('target=2027&base=2026&view=qb'), missionAlignment: data });
+    expect(html).toContain('<th>% of total</th><th>Value</th>');
+    expect(html).toContain('All four');
+    expect(html).toContain('Staff time · Pastor');
+    expect(html).toMatch(/bp-vdot[^>]*><\/span>Welcome/);
+    // Hospitality is $4,000 of $120,000 in Expenses (QuickBooks order puts every line under one group).
+    expect(html).toContain('>3.3%<');
+    const p = plannerParams(new URLSearchParams('target=2027&base=2026&view=qb'));
+    const model = buildPlannerModel(builder, { params: p }); model.valueLabels = missionValueLabels(builder, data);
+    const csv = plannerCsv(model, p);
+    expect(csv.split('\r\n')[0]).toContain('"% of total","Value"');
+    expect(csv).toContain('All four');
   });
 });
 

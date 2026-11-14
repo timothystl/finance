@@ -1,7 +1,7 @@
 // Shared pieces for the mission-alignment, congregation, report and trends pages: the four End
 // colors, stacked bars, SVG pies, money formatting, the year picker and the page chips.
 import { escapeHtml as e } from './render-helpers.js';
-import { MISSION_GOALS } from './mission-alignment.js';
+import { MISSION_GOALS, missionModel } from './mission-alignment.js';
 
 // Working colors (the editors) and the warmer presentation colors (congregation and report).
 export const END_COLORS = ['#E9A93C', '#9B7FD4', '#5FB57E', '#E8705F'];
@@ -186,3 +186,33 @@ export const MISSION_STYLES = `
   .tr-table .tr-proposed { background:#FFF9EC; }
   @media print { .ma-noprint, .ma-chips, .ma-year { display:none !important; } .cv-slide { border:0; } }
 `;
+
+// Each expense line's mission End(s) in a few words, for the Budget planner's "Value" column.
+export function missionValueLabels(builder, data) {
+  const out = new Map();
+  if (!data) return out;
+  const model = missionModel(builder, data);
+  const dotted = (i, text) => `<span class="bp-vdot" style="background:${END_COLORS[i]}"></span>${text}`;
+  const staffBy = new Map(model.staff.map((s) => [s.id, s.label]));
+  for (const r of model.rows) {
+    let text; let html;
+    if (r.isSource) {
+      text = r.isBenefit ? 'Staff benefits · by staff time' : `Staff time · ${staffBy.get(r.ownerId) || 'staff'}`;
+      html = `<span class="ma-muted">${e(text)}</span>`;
+    } else if (r.status === 'needs') {
+      text = ''; html = '<span class="ma-muted">Not yet aligned</span>';
+    } else if (r.status === 'spread') {
+      text = 'Like the budget'; html = 'Like the budget';
+    } else if (r.shares.every((v) => v === 2500)) {
+      text = 'All four'; html = `${r.shares.map((_, i) => `<span class="bp-vdot" style="background:${END_COLORS[i]};margin-right:2px"></span>`).join('')} All four`;
+    } else {
+      const parts = MISSION_GOALS.map(([, l], i) => ({ i, l, v: r.shares[i] })).filter((x) => x.v > 0);
+      text = parts.map((x) => (parts.length === 1 && x.v === 10000 ? x.l : `${x.l} ${Math.round(x.v / 100)}`)).join(' · ');
+      html = parts.map((x) => dotted(x.i, parts.length === 1 && x.v === 10000 ? x.l : `${x.l} ${Math.round(x.v / 100)}`)).join(' ');
+      if (r.status === 'partial') html += ' <span class="ma-muted">(partly)</span>';
+    }
+    if (!r.isSource && r.staffCost) html += ` <span class="ma-muted">+ staff</span>`;
+    out.set(r.line.category, { text, html });
+  }
+  return out;
+}

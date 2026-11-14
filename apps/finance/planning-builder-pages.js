@@ -16,6 +16,7 @@
 //     form attribute), so leaving lines out never submits the edit form;
 //   - Export CSV is a GET route returning the current view, and Print is print=1.
 import { escapeHtml as e } from './render-helpers.js';
+import { missionValueLabels } from './mission-ui.js';
 import { accountDisplayName, buildBoardSections, isHiddenAccount } from './board-layout.js';
 import { csvNum, csvText } from './payroll-report-render.js';
 
@@ -28,8 +29,8 @@ const pctText = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
 const TABS = [['grow', 'Grow every line'], ['project', 'Project one category'], ['commit', 'Commit to Church report']];
 
 // Screen columns, in Connect's order. 'change' is print-only (plan less base budget).
-export const PLANNER_COLUMNS = Object.freeze(['bud', 'act', 'used', 'proj', 'plan', 'delta']);
-const COLUMN_LABELS = { bud: (p) => `FY${p.base} Budget`, act: (p) => `FY${p.base} Actual`, used: (p) => `FY${p.base} % of budget`, proj: (p) => `FY${p.base} Projected`, plan: (p) => `FY${p.target} Plan`, change: () => 'Change', delta: () => 'Δ%' };
+export const PLANNER_COLUMNS = Object.freeze(['bud', 'act', 'used', 'proj', 'plan', 'delta', 'share', 'value']);
+const COLUMN_LABELS = { bud: (p) => `FY${p.base} Budget`, act: (p) => `FY${p.base} Actual`, used: (p) => `FY${p.base} % of budget`, proj: (p) => `FY${p.base} Projected`, plan: (p) => `FY${p.target} Plan`, change: () => 'Change', delta: () => 'Δ%', share: () => '% of total', value: () => 'Value' };
 export const OUTLOOK_DEFAULTS = Object.freeze({ expense: 3, revenue: 0 });
 
 // ── View parameters ──────────────────────────────────────────────────────────────────────────
@@ -213,24 +214,29 @@ export function plannerRows(model, { includeExcluded = false } = {}) {
   const rows = [];
   let current = 'revenue';
   const push = (row) => rows.push({ ...row, side: current });
-  const walk = (node) => {
+  // `base` is what a row's "% of total" is measured against: a line against its own subcategory,
+  // a subcategory's total against its whole side (all revenue, or all expenses).
+  let sideBase = 0;
+  const walk = (node, base) => {
     if (node.kind === 'leaf') {
       const isKept = model.kept(node.line);
-      if (isKept || includeExcluded) push({ kind: 'leaf', line: node.line, depth: node.depth, fig: lineFigures(node.line), excluded: !isKept });
+      if (isKept || includeExcluded) push({ kind: 'leaf', line: node.line, depth: node.depth, fig: lineFigures(node.line), excluded: !isKept, base });
       return;
     }
     const keptLeaves = leavesOf(node).filter(model.kept);
     if (!keptLeaves.length && !includeExcluded) return;
+    const fig = sumLines(keptLeaves);
     push({ kind: 'header', label: node.label, depth: node.depth, key: node.key, isRevenue: node.isRevenue, wrapper: node.wrapper });
-    node.children.forEach(walk);
-    push({ kind: 'total', label: `Total ${node.label}`, depth: node.depth, fig: sumLines(keptLeaves) });
+    node.children.forEach((child) => walk(child, fig.plan));
+    push({ kind: 'total', label: `Total ${node.label}`, depth: node.depth, fig, base: sideBase });
   };
   const side = (key, label, roots, fig) => {
     current = key;
     if (!roots.length) return;
     if (model.boardView) push({ kind: 'side', label });
-    roots.forEach(walk);
-    if (model.boardView || roots.length !== 1) push({ kind: 'sidetotal', label: `Total ${label}`, fig });
+    sideBase = fig.plan;
+    roots.forEach((root) => walk(root, fig.plan));
+    if (model.boardView || roots.length !== 1) push({ kind: 'sidetotal', label: `Total ${label}`, fig, base: fig.plan });
   };
   side('revenue', 'Revenue', model.tree.revenue, model.revenue);
   side('expense', 'Expenses', model.tree.expense, model.expense);
@@ -274,6 +280,20 @@ function cellText(key, f, net = false) {
   return pct == null ? '—' : pctText(pct);
 }
 
+// "% of total" (Plan year) and "Value" (the line's mission End, from Line items by End).
+const SHARE_VALUE = ['share', 'value'];
+function shareText(r) {
+  if (!['leaf', 'total', 'sidetotal'].includes(r.kind) || !r.base || !r.fig.hasPlan) return '';
+  return `${((r.fig.plan / r.base) * 100).toFixed(1)}%`;
+}
+function extraCell(key, r, model) {
+  if (key === 'share') {
+    const t = shareText(r);
+    return `<td class="${t ? (r.kind === 'leaf' ? 'bp-share' : 'bp-share bp-share-group') : 'tone-muted'}">${t || (r.kind === 'net' ? '' : '—')}</td>`;
+  }
+  const v = r.kind === 'leaf' ? model.valueLabels?.get(r.line.category) : null;
+  return v ? `<td class="bp-value">${v.html}</td>` : '<td></td>';
+}
 function figureCell(key, f, kind) {
   if (kind === 'net' && (key === 'delta' || key === 'used')) return '<td></td>';
   if (kind === 'net' && key === 'change') return '<td></td>';
@@ -301,7 +321,9 @@ function figureCell(key, f, kind) {
 export function plannerCsv(model, p) {
   const cols = p.cols;
   const d = (c) => (c / 100).toFixed(2);
-  const value = (key, f, kind) => {
+  const value = (key, f, kind, r) => {
+    if (key === 'share') return r ? shareText(r) : '';
+    if (key === 'value') return r?.kind === 'leaf' ? (model.valueLabels?.get(r.line.category)?.text || '') : '';
     if (key === 'bud') return f.hasBud ? d(f.bud) : '';
     if (key === 'act') return d(f.act);
     if (key === 'used') return f.hasBud && f.bud ? `${((f.act / f.bud) * 100).toFixed(1)}%` : '';
@@ -314,10 +336,11 @@ export function plannerCsv(model, p) {
   const lines = [['Category', ...cols.map((c) => COLUMN_LABELS[c](p))]];
   for (const r of plannerRows(model)) {
     if (r.kind === 'side' || r.kind === 'header') lines.push([r.label, ...cols.map(() => '')]);
-    else if (r.kind === 'leaf') lines.push([lineName(r.line, model.layout), ...cols.map((c) => value(c, r.fig, 'leaf'))]);
-    else lines.push([r.label, ...cols.map((c) => value(c, r.fig, r.kind))]);
+    else if (r.kind === 'leaf') lines.push([lineName(r.line, model.layout), ...cols.map((c) => value(c, r.fig, 'leaf', r))]);
+    else lines.push([r.label, ...cols.map((c) => value(c, r.fig, r.kind, r))]);
   }
-  return `${lines.map(([label, ...figures]) => [csvText(label), ...figures.map(csvNum)].join(',')).join('\r\n')}\r\n`;
+  const valueAt = cols.indexOf('value');
+  return `${lines.map(([label, ...figures]) => [csvText(label), ...figures.map((f, i) => (i === valueAt ? csvText(f) : csvNum(f)))].join(',')).join('\r\n')}\r\n`;
 }
 
 // ── Saving: the one form, reduced to the cells that changed ──────────────────────────────────
@@ -587,6 +610,7 @@ function leafRow(r, ctx) {
   const f = r.fig;
   const input = (name, value, extra, aria) => `<input type="text" inputmode="${extra.inputmode}" name="${name}_${i}" value="${e(value)}" class="bp-input${extra.cls ? ` ${extra.cls}` : ''}" aria-label="${e(aria)}"${extra.title ? ` title="${e(extra.title)}"` : ''}><input type="hidden" name="orig_${name}_${i}" value="${e(value)}">`;
   const cells = p.cols.map((key) => {
+    if (SHARE_VALUE.includes(key)) return extraCell(key, r, ctx.model);
     if (!editable) return figureCell(key, f, 'leaf');
     if (key === 'plan' && canEditPlan) return `<td data-col="plan" data-c="${l.plan ? l.plan.plannedAmountCents || 0 : 0}" data-has="${l.plan ? 1 : 0}">${input('plan', dollars(l.plan?.plannedAmountCents), { inputmode: 'numeric', cls: l.plan?.draft ? 'is-draft' : '' }, `FY${p.target} plan for ${shown}`)}</td>`;
     if (key === 'proj' && canEditActuals) return `<td data-col="proj" data-c="${l.projectedCents || 0}" data-has="1">${input('proj', dollars(l.projectedCents), { inputmode: 'numeric', cls: l.projectedOverridden ? 'is-corrected' : '', title: 'Whole dollars. Clear the box to go back to the computed projection.' }, `FY${p.base} projection for ${shown}`)}</td>`;
@@ -620,7 +644,7 @@ function tableRows(model, ctx) {
     }
     const cls = r.kind === 'net' ? 'bb-result' : r.kind === 'sidetotal' ? 'bb-total' : 'bb-subtotal';
     const pad = r.kind === 'total' ? ` style="padding-left:${10 + r.depth * 16}px"` : '';
-    return `<tr class="${cls}" data-bp="${r.kind}" data-side="${r.side}"><td${pad}>${e(r.label)}</td>${ctx.p.cols.map((k) => figureCell(k, r.fig, r.kind)).join('')}</tr>`;
+    return `<tr class="${cls}" data-bp="${r.kind}" data-side="${r.side}"><td${pad}>${e(r.label)}</td>${ctx.p.cols.map((k) => (SHARE_VALUE.includes(k) ? extraCell(k, r, ctx.model) : figureCell(k, r.fig, r.kind))).join('')}</tr>`;
   }).join('');
 }
 
@@ -690,10 +714,11 @@ function outlook(model, p) {
 
 // ── The page ─────────────────────────────────────────────────────────────────────────────────
 
-export function renderBudgetBuilderPage({ liveVersion = 'local', builder: rawBuilder, params, canEditPlan = false, canEditActuals = false, canManageBudgetPlan = false, statuses = {}, councilViewer = false, councilDraft = null, councilDraftFailed = false, layout = null, now = new Date() }) {
+export function renderBudgetBuilderPage({ missionAlignment = null, liveVersion = 'local', builder: rawBuilder, params, canEditPlan = false, canEditActuals = false, canManageBudgetPlan = false, statuses = {}, councilViewer = false, councilDraft = null, councilDraftFailed = false, layout = null, now = new Date() }) {
   const p = plannerYears(plannerParams(params, now), rawBuilder);
   const builder = councilDraft ? applyCouncilDraft(rawBuilder, councilDraft) : rawBuilder;
   const model = buildPlannerModel(builder, { layout, params: p });
+  model.valueLabels = missionValueLabels(rawBuilder, missionAlignment);
   const pickFormId = 'bp-pick';
   const form = canEditPlan || canEditActuals;
   const places = { expense: [], revenue: [] };
@@ -753,10 +778,11 @@ export function renderBudgetBuilderPage({ liveVersion = 'local', builder: rawBui
 // Connect's printed budget: a summary page (tiles and a short narrative), then Revenue and
 // Expenses on their own pages. "Plan for next year" prints Budget, Actual, Projected, Plan, Change
 // and Δ%; "Just this year" prints the base year alone. DRAFT stamps a watermark on every page.
-export function renderPlannerPrint({ builder: rawBuilder, params, councilDraft = null, layout = null, now = new Date() }) {
+export function renderPlannerPrint({ missionAlignment = null, builder: rawBuilder, params, councilDraft = null, layout = null, now = new Date() }) {
   const p = plannerYears(plannerParams(params, now), rawBuilder);
   const builder = councilDraft ? applyCouncilDraft(rawBuilder, councilDraft) : rawBuilder;
   const model = buildPlannerModel(builder, { layout, params: p });
+  model.valueLabels = missionValueLabels(rawBuilder, missionAlignment);
   // The sheet prints the columns chosen on screen. The target-year story (title, tiles, narrative)
   // only appears when a target-year column is among them; otherwise it is a sheet about the base year.
   const baseCols = ['bud', 'act', 'used', 'proj'];
@@ -783,10 +809,11 @@ export function renderPlannerPrint({ builder: rawBuilder, params, councilDraft =
     : `Through ${today}, FY${p.base} has brought in ${money(r.act)} and spent ${money(x.act)}. At the current pace the year ends with ${money(r.proj)} of revenue and ${money(x.proj)} of expenses, ${r.proj - x.proj >= 0 ? `a surplus of ${money(r.proj - x.proj)}` : `a deficit of ${money(x.proj - r.proj)}`}${r.hasBud || x.hasBud ? `, against a budgeted net of ${signed(r.bud - x.bud)}` : ''}.`;
   const rows = plannerRows(model);
   const renderRow = (row) => {
-    if (row.kind === 'leaf') return `<tr><td style="padding-left:${6 + row.depth * 12}px">${e(lineName(row.line, layout))}</td>${cols.map((k) => figureCell(k, row.fig, 'leaf')).join('')}</tr>`;
+    const cell = (k) => (SHARE_VALUE.includes(k) ? extraCell(k, row, model) : figureCell(k, row.fig, row.kind));
+    if (row.kind === 'leaf') return `<tr><td style="padding-left:${6 + row.depth * 12}px">${e(lineName(row.line, layout))}</td>${cols.map(cell).join('')}</tr>`;
     if (row.kind === 'side') return '';
     if (row.kind === 'header') return `<tr class="bp-print-group"><td colspan="${cols.length + 1}" style="padding-left:${6 + row.depth * 12}px">${e(row.label)}</td></tr>`;
-    return `<tr class="bp-print-total${row.kind === 'net' ? ' is-net' : ''}"><td>${e(row.label)}</td>${cols.map((k) => figureCell(k, row.fig, row.kind)).join('')}</tr>`;
+    return `<tr class="bp-print-total${row.kind === 'net' ? ' is-net' : ''}"><td>${e(row.label)}</td>${cols.map(cell).join('')}</tr>`;
   };
   const thead = `<thead><tr><th>Category</th>${cols.map((k) => `<th class="n">${e(COLUMN_LABELS[k](p).replace('Projected', 'Proj.'))}</th>`).join('')}</tr></thead>`;
   const watermark = p.draft ? '<div class="bp-watermark" aria-hidden="true">DRAFT</div>' : '';
@@ -809,6 +836,8 @@ export function renderPlannerPrint({ builder: rawBuilder, params, councilDraft =
 }
 
 export const BUDGET_BUILDER_STYLES = `
+    .bp-share { color:var(--muted); font-variant-numeric:tabular-nums; } .bp-share-group { color:var(--ink); font-weight:600; }
+    .bp-value { white-space:nowrap; font-size:13px; } .bp-value .bp-vdot { display:inline-block; width:8px; height:8px; border-radius:999px; margin-right:5px; vertical-align:1px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .bb-banner { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px; margin-top:16px; padding:20px 24px; border-radius:10px; background:var(--navy); color:#fff; }
     .bb-banner small { display:block; color:#C9D2E2; font-size:13px; }
     .bb-banner strong { display:block; font-size:28px; margin:4px 0; font-family:Outfit, sans-serif; }
