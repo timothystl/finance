@@ -104,7 +104,9 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   Line items by End or from the person's editor: that share of their full cost (pay plus benefits)
   is counted on the line and takes the line's Ends; their own split covers the rest of their time.
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
-  and each role (percent only, no pay by person), the table, and the reasons for shared lines.
+  and each role (percent only, no pay by person), the table, the lines carrying staff time (who and
+  what share of their time; the dollars only for roles allowed to see compensation), and the reasons
+  for shared lines.
 - **For the congregation** (anyone who sees the budget; admins edit the slide words). Print-ready
   slides: cents of every dollar by End, where income comes from and where it goes against this
   year's budget, and how the budget has changed since 2022. A *Donor dollars* switch sets Mother's Day Out
