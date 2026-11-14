@@ -14,15 +14,34 @@ const shareOf = (parts) => (sum(parts) > 0 ? distribute(FULL, parts.map((p) => M
 const staffBullet = (people) => (!people.length ? 'Staff time' : people.length === 1 ? `${people[0].label}’s time` : `Staff time, most from the ${people[0].label}`);
 
 // Top contributors to each End, used when no words have been written for the slide.
-export function autoBullets(model, layout) {
+// Shared overhead (the building, insurance, utilities, office, fees) and lines split across all four
+// Ends are not good examples of ministry; they are left out of the automatic examples.
+const OVERHEAD_KEYS = new Set(['property', 'benefits', 'salaries']);
+const OVERHEAD_RE = /insurance|utilit|custodial|repair|maint|capital|office|supplies - office|bank|fees|leased|technology|payment processing|postage|advertis/i;
+export function exampleChoices(model, layout, i) {
   const lay = layout || normalizeBoardLayout(null);
-  return MISSION_GOALS.map((_, i) => {
-    const items = [
-      ...model.rows.filter((r) => !r.isSource && r.parts?.[i] > 0).map((r) => ({ label: accountDisplayName(lay, r.line.category, r.line.name), cents: r.parts[i] })),
-      ...(model.staffTotals[i] > 0 ? [{ label: staffBullet(model.staff.filter((s) => s.parts[i] > 0 && !s.councilHidden).sort((a, b) => b.parts[i] - a.parts[i])), cents: model.staffTotals[i] }] : []),
-    ];
-    return items.sort((a, b) => b.cents - a.cents).slice(0, 4).map((x) => x.label);
+  const lines = model.rows.filter((r) => !r.isSource && r.parts?.[i] > 0).map((r) => {
+    const label = accountDisplayName(lay, r.line.category, r.line.name).replace(/^\d{4,6}\s+/, '');
+    const overhead = r.status === 'spread' || r.shares.every((v) => v > 0) || OVERHEAD_KEYS.has(boardCategoryFor(lay, r.line.category, r.line.name, false).key) || OVERHEAD_RE.test(`${r.line.category} ${r.line.name}`);
+    return { key: `line:${r.line.category}`, label, cents: r.parts[i], overhead, main: r.shares[i] >= 5000 };
   });
+  const staff = model.staff.filter((s) => s.parts[i] > 0 && !s.councilHidden).map((s) => ({ key: `staff:${s.id}`, label: `${s.label}’s time`, cents: s.parts[i], overhead: false, main: true }));
+  return [...lines, ...staff].sort((a, b) => b.cents - a.cents);
+}
+export function autoBullets(model, layout) {
+  return MISSION_GOALS.map((_, i) => {
+    const choices = exampleChoices(model, layout, i);
+    const good = choices.filter((c) => !c.overhead && c.main);
+    return (good.length >= 2 ? good : choices.filter((c) => !c.overhead)).slice(0, 4).map((x) => x.label);
+  });
+}
+// The examples shown under one End: those ticked (in order of size), then typed wording, else automatic.
+export function slideExamples(model, layout, story, i, auto) {
+  const picked = new Set(story?.picks?.[i] || []);
+  const ticked = picked.size ? exampleChoices(model, layout, i).filter((c) => picked.has(c.key)).map((c) => c.label) : [];
+  const typed = story?.bullets?.[i] || [];
+  const list = [...ticked, ...typed].slice(0, 6);
+  return list.length ? list : auto[i];
 }
 
 function sideGroups(builder, layout, isRevenue) {
@@ -99,7 +118,7 @@ export function renderCongregationPage({ builder: fullBuilder, data, layout = nu
     if (aligned > 0) {
       const cents = distribute(100, model.totals.map((v) => Math.max(0, v)));
       const auto = autoBullets(model, layout);
-      const bullets = MISSION_GOALS.map((_, i) => (data.story.bullets[i]?.length ? data.story.bullets[i] : auto[i]));
+      const bullets = MISSION_GOALS.map((_, i) => slideExamples(model, layout, data.story, i, auto));
       const staffCents = model.total ? Math.round((model.staffPool / model.total) * 100) : 0;
       const strip = MISSION_GOALS.map(([, l], i) => (cents[i] ? `<div style="width:${cents[i]}%;background:${PRESENT_COLORS[i]}"><b>${cents[i]}¢</b>${cents[i] >= 12 ? l : ''}</div>` : '')).join('');
       slides.push(`<section class="cv-slide" aria-label="How your gifts do the mission">${rule}<div class="cv-body">
@@ -183,8 +202,15 @@ function storyEditor(builder, data, layout) {
   return `<details class="ma-panel ma-noprint"><summary><strong>Edit the words on the mission slide</strong></summary>
     <form method="POST" action="/api/v1/planning/mission-save" style="display:flex;flex-direction:column;gap:14px">
       <input type="hidden" name="target" value="${builder.targetYear}"><input type="hidden" name="base" value="${builder.baseYear}"><input type="hidden" name="revision" value="${data.revision}"><input type="hidden" name="action" value="story"><input type="hidden" name="return_page" value="congregation"><input type="hidden" name="return_target" value="${builder.targetYear}">
-      <p class="ma-note">One item per line, up to six for each End. Leave an End blank to list its largest budget lines automatically.</p>
-      <div class="cv-two">${MISSION_GOALS.map(([k, l], i) => `<label class="field"><span>${l}</span><textarea name="bullets_${k}" rows="4" placeholder="${e(auto[i].join('\n'))}">${e(data.story.bullets[i].join('\n'))}</textarea></label>`).join('')}</div>
+      <p class="ma-note">Tick the ministry to show as examples under each End (up to six with any wording you add). Shared costs like the building and insurance are listed last. Leave an End untouched to use its largest ministry lines automatically.</p>
+      <div class="cv-two">${MISSION_GOALS.map(([k, l], i) => {
+        const choices = exampleChoices(model, layout, i);
+        const picked = new Set(data.story.picks?.[i] || []);
+        const ordered = [...choices.filter((c) => !c.overhead), ...choices.filter((c) => c.overhead)];
+        return `<fieldset class="ma-panel" style="padding:14px"><legend style="font-weight:700">${l}</legend>
+          <div style="max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:4px;font-size:14px">${ordered.map((c, j) => `<label><input type="checkbox" name="pick_${k}_${j}" value="${e(c.key)}"${picked.has(c.key) ? ' checked' : ''}> ${e(c.label)} <span class="ma-muted">· ${money(c.cents)}${c.overhead ? ' · shared cost' : ''}</span></label>`).join('') || '<span class="ma-muted">Nothing counts toward this End yet.</span>'}${ordered.map((_, j) => '').join('')}</div>
+          <label class="field" style="margin-top:8px"><span>Or add your own wording (one per line)</span><textarea name="bullets_${k}" rows="2" placeholder="${e(auto[i].join('\n'))}">${e(data.story.bullets[i].join('\n'))}</textarea></label></fieldset>`;
+      }).join('')}</div>
       <label class="field"><span>Closing sentence (optional)</span><textarea name="note" rows="2" maxlength="600" placeholder="People are the ministry. About …¢ of every dollar is staff time…">${e(data.story.note)}</textarea></label>
       <div class="ma-actions"><button type="submit">Save slide words</button></div>
     </form></details>`;
@@ -243,9 +269,50 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
       <tbody><tr><td>Staff salaries &amp; benefits</td><td class="num">${money(model.staffPool)}</td>${model.staffTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.staffPool - sum(model.staffTotals))}</td></tr>
       <tr><td>Programs &amp; building</td><td class="num">${money(programPool)}</td>${model.programTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(programPool - sum(model.programTotals))}</td></tr></tbody>
       <tfoot><tr><td>Whole budget</td><td class="num">${money(model.total)}</td>${model.totals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.unassigned)}</td></tr></tfoot></table></section>
+    ${personnelPanel(personnelShare(builder, data, layout), { year: target, baseYear: builder.baseYear })}
     ${staffLinesPanel(model, lay, canSeePay)}
     ${notes.length ? `<section class="cv-panel"><h3>Shared and split lines, and why</h3><table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col" class="num">Budget</th><th scope="col">Split</th><th scope="col">Why</th></tr></thead><tbody>
       ${notes.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td class="num">${money(r.cents)}</td><td>${e(methodText(r))}</td><td>${e(r.note || '—')}</td></tr>`).join('')}</tbody></table></section>` : ''}
     <div class="cv-foot"><small>Timothy Lutheran Church · From our Neighborhood to the Nations</small><small>${model.unassigned ? 'Draft for discussion' : 'Proposed budget'} · planned resource allocations, not measures of ministry impact</small></div>
   </div></section>`;
+}
+
+// Staff salaries and benefits as a share of spending: of all expenses, and of church expenses with
+// Mother's Day Out (self-funded, with its own payroll) set aside, beside this year's budget. Totals
+// only; no person's pay.
+export function personnelShare(builder, data, layout) {
+  const model = missionModel(builder, data);
+  const { church, mdoCost } = splitOutMdo(builder, layout);
+  const mdoLines = builder.lines.filter((l) => l.classification !== 'Income' && !church.lines.includes(l));
+  const mdoPayroll = mdoLines.filter((l) => /wage|salar|payroll|tax|workers?.? ?comp|benefit/i.test(`${l.category} ${l.name || ''}`)).reduce((t, l) => t + (l.plan?.plannedAmountCents || 0), 0);
+  const staffCats = new Set([...data.staff.flatMap((s) => s.sources), ...(data.benefitLines || [])]);
+  const staffLines = builder.lines.filter((l) => staffCats.has(l.category));
+  const priorStaff = staffLines.some((l) => l.baseBudgetCents != null) ? sum(staffLines.map((l) => l.baseBudgetCents || 0)) : null;
+  const priorTotal = builder.lines.filter((l) => l.classification !== 'Income').reduce((t, l) => t + (l.baseBudgetCents || 0), 0);
+  const priorMdo = mdoLines.reduce((t, l) => t + (l.baseBudgetCents || 0), 0);
+  const pay = sum(model.staff.map((s) => s.ownPay || 0));
+  return {
+    staff: model.staffPool, pay, benefits: model.staffPool - pay, total: model.total, churchTotal: model.total - mdoCost, mdoCost, mdoPayroll,
+    priorStaff, priorTotal, priorChurchTotal: priorTotal - priorMdo,
+  };
+}
+
+export function personnelPanel(p, { year, baseYear } = {}) {
+  if (!p.staff) return '';
+  const pc = (a, b) => (b ? `${((a / b) * 100).toFixed(1)}%` : '—');
+  const row = (label, a, b, prior) => `<tr><td>${label}</td><td class="num">${money(a)}</td><td class="num">${money(b)}</td><td class="num"><b>${pc(a, b)}</b></td>${prior != null ? `<td class="num">${prior}</td>` : ''}</tr>`;
+  const hasPrior = p.priorStaff != null;
+  return `<section class="ma-panel" aria-labelledby="ps-h"><div class="ma-section-head"><h3 id="ps-h" style="margin:0">Staff cost share</h3><span class="ma-muted">Church staff salaries and benefits as a share of spending${year ? ` · FY${year} plan` : ''}</span></div>
+    <div class="ma-cards">
+      <div class="ma-card"><span class="ma-muted">Of all expenses</span><span class="ma-big">${pc(p.staff, p.total)}</span><span class="ma-muted">${money(p.staff)} of ${money(p.total)}</span></div>
+      <div class="ma-card"><span class="ma-muted">Of church expenses, without Mother’s Day Out</span><span class="ma-big">${pc(p.staff, p.churchTotal)}</span><span class="ma-muted">${money(p.staff)} of ${money(p.churchTotal)}</span></div>
+      <div class="ma-card"><span class="ma-muted">Pay and benefits</span><span class="ma-big">${pc(p.pay, p.staff)} · ${pc(p.benefits, p.staff)}</span><span class="ma-muted">${money(p.pay)} pay · ${money(p.benefits)} benefits</span></div>
+    </div>
+    <div class="ma-frame"><table class="ma-table"><thead><tr><th scope="col">Measure</th><th scope="col" class="num">Staff cost</th><th scope="col" class="num">Out of</th><th scope="col" class="num">Share</th>${hasPrior ? `<th scope="col" class="num">FY${baseYear} budget</th>` : ''}</tr></thead><tbody>
+      ${row('Church staff, of all expenses', p.staff, p.total, hasPrior ? pc(p.priorStaff, p.priorTotal) : null)}
+      ${row('Church staff, of church expenses (without Mother’s Day Out)', p.staff, p.churchTotal, hasPrior ? pc(p.priorStaff, p.priorChurchTotal) : null)}
+      ${p.mdoPayroll ? row('All payroll incl. Mother’s Day Out staff, of all expenses', p.staff + p.mdoPayroll, p.total, null) : ''}
+    </tbody></table></div>
+    <p class="ma-note" style="margin:0">Church staff are the roles on Staff time: their linked salary lines plus the shared benefit lines. Mother’s Day Out pays its own staff from tuition, so the middle figure is the one that speaks to how gifts are used.</p>
+  </section>`;
 }

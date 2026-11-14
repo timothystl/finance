@@ -25,7 +25,7 @@ const fail = (message) => { throw new FormValidationError(message); };
 const sum = (v) => v.reduce((a, b) => a + b, 0);
 export const lineCents = (line) => line?.plan?.plannedAmountCents || 0;
 export const expenseLines = (builder) => builder.lines.filter((l) => l.classification !== 'Income');
-export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], leads: {}, benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], note: '' } });
+export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], leads: {}, benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], picks: [[], [], [], []], note: '' } });
 
 // ── Reading and normalizing ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,8 @@ export function normalizeMission(raw) {
   const bullets = raw.story?.bullets;
   if (Array.isArray(bullets) && bullets.length === 4) out.story.bullets = bullets.map((b) => (Array.isArray(b) ? b.map((s) => String(s).slice(0, 80)).filter(Boolean).slice(0, 6) : []));
   out.story.note = String(raw.story?.note || '').slice(0, MAX_NOTE);
+  const picks = raw.story?.picks;
+  out.story.picks = Array.isArray(picks) && picks.length === 4 ? picks.map((p) => (Array.isArray(p) ? p.map(String).filter((x) => /^(line|staff):/.test(x)).slice(0, 6) : [])) : [[], [], [], []];
   out.district = districtFrom(raw.district);
   return out;
 }
@@ -470,12 +472,17 @@ export function removeStaff(data, form) {
   return { data: { ...data, leads, staff: data.staff.filter((s) => s.id !== id) }, params: {} };
 }
 
+// The examples under each End on the congregation slide: budget lines and staff roles ticked from
+// a list (`picks`, `line:<category>` or `staff:<id>`), plus any wording typed in (`bullets`).
 export function applyStory(data, form) {
   const bullets = GOAL_KEYS.map((g) => String(form[`bullets_${g}`] || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
-  if (bullets.some((b) => b.length > 6 || b.some((s) => s.length > 80))) fail('Use up to six lines per End, 80 characters each.');
+  // Unticked boxes are not sent, so every pick_<end>_<n> key present is a tick.
+  const picks = GOAL_KEYS.map((g) => Object.keys(form).filter((k) => new RegExp(`^pick_${g}_\\d{1,3}$`).test(k)).sort((a, b) => Number(a.split('_').pop()) - Number(b.split('_').pop()))
+    .map((k) => String(form[k]).slice(0, 320)).filter((v) => /^(line|staff):/.test(v)));
+  if (bullets.some((b, i) => b.length + picks[i].length > 6 || b.some((s) => s.length > 80))) fail('Show up to six examples per End (ticked and typed together), 80 characters each.');
   const note = String(form.note || '').trim();
   if (note.length > MAX_NOTE) fail(`Keep the closing note to ${MAX_NOTE} characters.`);
-  return { data: { ...data, story: { bullets, note } }, params: {} };
+  return { data: { ...data, story: { bullets, picks, note } }, params: {} };
 }
 
 // ── Bringing staff in from the compensation planner ──────────────────────────────────────────

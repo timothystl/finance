@@ -3,6 +3,7 @@
 import { escapeHtml as e } from './render-helpers.js';
 import { buildBoardSections, normalizeBoardLayout, accountDisplayName } from './board-layout.js';
 import { GOAL_KEYS, MISSION_GOALS, WEEK_TEMPLATES, lineCents, missionModel, templateWeek, weekShares } from './mission-alignment.js';
+import { personnelPanel, personnelShare } from './mission-visuals.js';
 import { END_COLORS, dot, missionChips, money, pageHref, pct0, pct1, sharesLabel, stackBar, sum, yearPicker } from './mission-ui.js';
 
 const FULL = 10000;
@@ -239,7 +240,7 @@ export function renderStaffTimePage({ builder, data, layout = null, params, canE
     <form method="POST" action="/api/v1/planning/mission-save" class="ma-year">${hiddenYear(builder, data, 'staff-add')}<label class="field"><span>Add a staff role</span><input name="label" maxlength="60" required placeholder="e.g. Music Director"></label><button type="submit" class="button-outline">Add role</button></form>
   </section>`;
   const person = model.staff.find((p) => p.id === selectedId);
-  return `${head}${statusLines(params)}${params?.get('imported') ? `<p class="status status-ok" role="status">${Number(params.get('imported')) ? `${Number(params.get('imported'))} staff brought in from the compensation planner.` : 'Staff refreshed from the compensation planner.'} Set each person’s time below.</p>` : ''}${plannerPanel({ builder, data, model, workers, layout })}${table}${person ? staffEditor({ builder, data, model, person, params, layout }) : ''}<script src="/mission-alignment/live.js" defer></script>`;
+  return `${head}${statusLines(params)}${params?.get('imported') ? `<p class="status status-ok" role="status">${Number(params.get('imported')) ? `${Number(params.get('imported'))} staff brought in from the compensation planner.` : 'Staff refreshed from the compensation planner.'} Set each person’s time below.</p>` : ''}${plannerPanel({ builder, data, model, workers, layout })}${personnelPanel(personnelShare(builder, data, layout), { year: target, baseYear: builder.baseYear })}${table}${person ? staffEditor({ builder, data, model, person, params, layout }) : ''}<script src="/mission-alignment/live.js" defer></script>`;
 }
 
 // The compensation planner's staff, and the shared benefit lines they draw on.

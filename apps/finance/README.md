@@ -112,6 +112,9 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   activity can count toward a budget line (its hours follow that line's Ends, shown as time on lines
   on Staff time, Line items by End and the Mission report, with cost only for roles allowed to see
   compensation), and seasonal work takes "weeks a year" and counts as its yearly average.
+- **Staff cost share** (on Staff time and the Mission report): church staff salaries and benefits as a
+  share of all expenses and of church expenses with Mother's Day Out set aside, pay versus benefits,
+  the base-year budget's shares, and all payroll including Mother's Day Out staff.
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
   and each role (percent only, no pay by person), the table, who leads each line and the budget each
   person oversees by End, and the reasons for shared lines.
