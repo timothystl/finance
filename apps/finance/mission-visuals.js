@@ -181,9 +181,14 @@ function storyEditor(builder, data, layout) {
 
 // Who leads each line, and the ministry each person oversees, by End. These are line budgets, not
 // pay, so every viewer of the report sees them.
-function staffLinesPanel(model, lay) {
+function staffLinesPanel(model, lay, canSeePay = false) {
   const rows = model.rows.filter((r) => !r.isSource && r.leads?.length && r.cents).sort((a, b) => b.cents - a.cents);
-  if (!rows.length) return '';
+  const time = model.staff.flatMap((p) => (p.timeOnLines || []).map((x) => ({ ...x, label: p.label }))).sort((a, b) => b.hours - a.hours);
+  const timeTable = time.length ? `<section class="cv-panel"><div class="ma-section-head"><h3>Staff time on budget lines</h3><span class="ma-muted">From each person’s typical week; seasonal work averaged over the year. That time follows the line’s value.</span></div>
+    <table class="cv-table"><thead><tr><th scope="col">Staff</th><th scope="col">Line</th><th scope="col" class="num">Hours a week</th><th scope="col" class="num">Share of their time</th>${canSeePay ? '<th scope="col" class="num">Cost of that time</th>' : ''}</tr></thead><tbody>
+    ${time.map((x) => `<tr><td>${e(x.label)}</td><td>${e(accountDisplayName(lay, x.category, x.line.name))}</td><td class="num">${(x.hours / 100).toFixed(1)}</td><td class="num">${pct0(x.bp)}</td>${canSeePay ? `<td class="num">${money(x.cents)}</td>` : ''}</tr>`).join('')}
+    </tbody></table></section>` : '';
+  if (!rows.length) return timeTable;
   const endText = (r) => (r.status === 'spread' ? 'Like the rest of the budget' : MISSION_GOALS.map(([, l], i) => (r.shares[i] ? `${l}${r.shares[i] < FULL ? ` ${pct0(r.shares[i])}` : ''}` : '')).filter(Boolean).join(' · ') || 'Not yet aligned');
   const people = model.staff.filter((p) => p.ledCents).sort((a, b) => b.ledCents - a.ledCents);
   return `<section class="cv-panel"><div class="ma-section-head"><h3>Who leads each part of the budget</h3><span class="ma-muted">Responsibility only: each person’s pay still follows their own time.</span></div>
@@ -192,7 +197,7 @@ function staffLinesPanel(model, lay) {
     </tbody></table>
     <table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col" class="num">Budget</th><th scope="col">Led by</th><th scope="col">Counts toward</th></tr></thead><tbody>
     ${rows.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td class="num">${money(r.cents)}</td><td>${r.leads.map((x) => `${e(x.label)}${x.bp < FULL ? ` ${pct0(x.bp)}` : ''}`).join(', ')}</td><td>${e(endText(r))}</td></tr>`).join('')}
-    </tbody></table></section>`;
+    </tbody></table></section>${timeTable}`;
 }
 
 // ── Mission report for council ───────────────────────────────────────────────────────────────
@@ -227,7 +232,7 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
       <tbody><tr><td>Staff salaries &amp; benefits</td><td class="num">${money(model.staffPool)}</td>${model.staffTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.staffPool - sum(model.staffTotals))}</td></tr>
       <tr><td>Programs &amp; building</td><td class="num">${money(programPool)}</td>${model.programTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(programPool - sum(model.programTotals))}</td></tr></tbody>
       <tfoot><tr><td>Whole budget</td><td class="num">${money(model.total)}</td>${model.totals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.unassigned)}</td></tr></tfoot></table></section>
-    ${staffLinesPanel(model, lay)}
+    ${staffLinesPanel(model, lay, canSeePay)}
     ${notes.length ? `<section class="cv-panel"><h3>Shared and split lines, and why</h3><table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col" class="num">Budget</th><th scope="col">Split</th><th scope="col">Why</th></tr></thead><tbody>
       ${notes.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td class="num">${money(r.cents)}</td><td>${e(methodText(r))}</td><td>${e(r.note || '—')}</td></tr>`).join('')}</tbody></table></section>` : ''}
     <div class="cv-foot"><small>Timothy Lutheran Church · From our Neighborhood to the Nations</small><small>${model.unassigned ? 'Draft for discussion' : 'Proposed budget'} · planned resource allocations, not measures of ministry impact</small></div>

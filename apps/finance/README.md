@@ -108,7 +108,10 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   leads it (each person's share of the line, at most 100%), set from the line's panel on Line items
   by End or from the person's editor. Leads are responsibility only: no pay or time moves, the line
   keeps its own Ends, and the Mission report shows the budget each person oversees by End. Earlier
-  "time on a line" entries (`lineTime`) are kept as saved but no longer counted.
+  "time on a line" entries (`lineTime`) are kept as saved but no longer counted. In a typical week, an
+  activity can count toward a budget line (its hours follow that line's Ends, shown as time on lines
+  on Staff time, Line items by End and the Mission report, with cost only for roles allowed to see
+  compensation), and seasonal work takes "weeks a year" and counts as its yearly average.
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
   and each role (percent only, no pay by person), the table, who leads each line and the budget each
   person oversees by End, and the reasons for shared lines.
