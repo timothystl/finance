@@ -24,13 +24,9 @@ import { PAYROLL_RPC_FNS } from './payroll-rpc-fns.js';
 
 const REQUEST_TIMEOUT_MS = 8000; // a year-totals or full-roster call is more than one gift entry
 
-// The SAME anon-role Supabase key already public in website/admin/payroll.html's
-// source (a browser downloads it on every visit to that page). Reusing the exact
-// constant here is not a new exposure -- see childcare-portal's
-// r26_complete_revoke_anon_staff_wages migration: anon carries zero table grants
-// regardless of who holds this value. It identifies the Supabase project to
-// PostgREST; the real gate is entirely server-side on Website's Worker.
-const MDO_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhaGRzdG9wc3VteG5xdmRjbG15Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMzM3NDYsImV4cCI6MjA4NzcwOTc0Nn0.PGuSZcnwGaG0Tes6li04JeNBAKDP4oJ6eGwhuYYXO_E';
+// Website owns upstream project credentials and injects its payroll RPC secret.
+// Finance sends only the contract key, the verified staff JWT and named arguments.
+// Release Website's credential-independent relay before deploying this client.
 
 /**
  * Calls one of Website's existing payroll_* RPC functions through its proxy.
@@ -54,8 +50,6 @@ export async function callPayrollProxy(env, accessJwt, fn, params) {
       headers: {
         'X-Contract-Key': key,
         'Cf-Access-Jwt-Assertion': accessJwt,
-        apikey: MDO_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${MDO_SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(params || {}),
