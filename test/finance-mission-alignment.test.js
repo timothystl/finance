@@ -164,6 +164,9 @@ describe('staff time on specific budget lines', () => {
     const drawer = renderMissionPage({ builder, data, params: new URLSearchParams('line=Expenses%3AUtilities'), canEdit: true });
     expect(drawer).toContain('Staff time on this line');
     expect(drawer).toContain('name="st_0"');
+    expect(drawer).toContain('+ Add staff');
+    expect(drawer).toContain('<th scope="col" class="num">Staff time</th>');
+    expect(drawer).toContain('id="ma-staff"');
   });
 });
 
