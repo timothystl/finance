@@ -104,14 +104,14 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   divided by each person's projected benefits in the planner, stored only as a share in basis
   points; dollars always come from the budget plan. Refreshing keeps time splits; a person no longer
   in the planner is flagged, not removed. Roles hidden from council stay out of council's per-role pies.
-  Quick splits can be typed straight into the Staff time table. Part of a person's time can go to
-  specific ministry lines (for example 5% to the Christmas Market), set from that line's panel on
-  Line items by End or from the person's editor: that share of their full cost (pay plus benefits)
-  is counted on the line and takes the line's Ends; their own split covers the rest of their time.
+  Quick splits can be typed straight into the Staff time table. Each ministry line can name who
+  leads it (each person's share of the line, at most 100%), set from the line's panel on Line items
+  by End or from the person's editor. Leads are responsibility only: no pay or time moves, the line
+  keeps its own Ends, and the Mission report shows the budget each person oversees by End. Earlier
+  "time on a line" entries (`lineTime`) are kept as saved but no longer counted.
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
-  and each role (percent only, no pay by person), the table, the lines carrying staff time (who and
-  what share of their time; the dollars only for roles allowed to see compensation), and the reasons
-  for shared lines.
+  and each role (percent only, no pay by person), the table, who leads each line and the budget each
+  person oversees by End, and the reasons for shared lines.
 - **For the congregation** (anyone who sees the budget; admins edit the slide words). Print-ready
   slides: cents of every dollar by End, where income comes from and where it goes against this
   year's budget, and how the budget has changed since 2022. A *Donor dollars* switch sets Mother's Day Out

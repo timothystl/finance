@@ -211,7 +211,7 @@ export function missionValueLabels(builder, data) {
       html = parts.map((x) => dotted(x.i, parts.length === 1 && x.v === 10000 ? x.l : `${x.l} ${Math.round(x.v / 100)}`)).join(' ');
       if (r.status === 'partial') html += ' <span class="ma-muted">(partly)</span>';
     }
-    if (!r.isSource && r.staffCost) html += ` <span class="ma-muted">+ staff</span>`;
+    if (!r.isSource && r.leads?.length) { const who = r.leads.map((x) => x.label).join(', '); html += ` <span class="ma-muted">· ${e(who)}</span>`; text = text ? `${text} · led by ${who}` : `Led by ${who}`; }
     out.set(r.line.category, { text, html });
   }
   return out;

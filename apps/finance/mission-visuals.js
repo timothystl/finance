@@ -179,18 +179,20 @@ function storyEditor(builder, data, layout) {
     </form></details>`;
 }
 
-// Lines that carry part of a person's time. Dollars only for viewers allowed to see compensation,
-// since one person's share on one line would otherwise reveal their pay; everyone else sees who and
-// how much of their time.
-function staffLinesPanel(model, lay, canSeePay) {
-  const rows = model.rows.filter((r) => !r.isSource && r.staffCost > 0).sort((a, b) => b.staffCost - a.staffCost);
+// Who leads each line, and the ministry each person oversees, by End. These are line budgets, not
+// pay, so every viewer of the report sees them.
+function staffLinesPanel(model, lay) {
+  const rows = model.rows.filter((r) => !r.isSource && r.leads?.length && r.cents).sort((a, b) => b.cents - a.cents);
   if (!rows.length) return '';
   const endText = (r) => (r.status === 'spread' ? 'Like the rest of the budget' : MISSION_GOALS.map(([, l], i) => (r.shares[i] ? `${l}${r.shares[i] < FULL ? ` ${pct0(r.shares[i])}` : ''}` : '')).filter(Boolean).join(' · ') || 'Not yet aligned');
-  const totalStaff = sum(rows.map((r) => r.staffCost));
-  return `<section class="cv-panel"><div class="ma-section-head"><h3>Staff time on budget lines</h3><span class="ma-muted">The share of each person’s year given to a line. That part of their pay and benefits counts on the line and follows its Ends.</span></div>
-    <table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col">Staff and share of their time</th>${canSeePay ? '<th scope="col" class="num">Line budget</th><th scope="col" class="num">Staff time</th><th scope="col" class="num">Full cost</th>' : ''}<th scope="col">Counts toward</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td>${r.staffBy.map((x) => `${e(x.label)} ${pct0(x.bp)}`).join(', ')}</td>${canSeePay ? `<td class="num">${money(r.cents)}</td><td class="num">${money(r.staffCost)}</td><td class="num"><b>${money(r.cents + r.staffCost)}</b></td>` : ''}<td>${e(endText(r))}</td></tr>`).join('')}
-    </tbody>${canSeePay ? `<tfoot><tr><td colspan="3">All lines with staff time</td><td class="num">${money(totalStaff)}</td><td class="num">${money(sum(rows.map((r) => r.cents + r.staffCost)))}</td><td></td></tr></tfoot>` : ''}</table></section>`;
+  const people = model.staff.filter((p) => p.ledCents).sort((a, b) => b.ledCents - a.ledCents);
+  return `<section class="cv-panel"><div class="ma-section-head"><h3>Who leads each part of the budget</h3><span class="ma-muted">Responsibility only: each person’s pay still follows their own time.</span></div>
+    <table class="cv-table"><thead><tr><th scope="col">Staff</th><th scope="col" class="num">Lines</th><th scope="col" class="num">Budget they lead</th>${MISSION_GOALS.map(([, l]) => `<th scope="col" class="num">${l}</th>`).join('')}</tr></thead><tbody>
+    ${people.map((p) => `<tr><td>${e(p.label)}</td><td class="num">${p.ledLines.length}</td><td class="num"><b>${money(p.ledCents)}</b></td>${p.ledParts.map((c) => `<td class="num">${c ? money(c) : '—'}</td>`).join('')}</tr>`).join('')}
+    </tbody></table>
+    <table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col" class="num">Budget</th><th scope="col">Led by</th><th scope="col">Counts toward</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td class="num">${money(r.cents)}</td><td>${r.leads.map((x) => `${e(x.label)}${x.bp < FULL ? ` ${pct0(x.bp)}` : ''}`).join(', ')}</td><td>${e(endText(r))}</td></tr>`).join('')}
+    </tbody></table></section>`;
 }
 
 // ── Mission report for council ───────────────────────────────────────────────────────────────
@@ -225,7 +227,7 @@ export function renderMissionReportPage({ builder, data, layout = null, admin = 
       <tbody><tr><td>Staff salaries &amp; benefits</td><td class="num">${money(model.staffPool)}</td>${model.staffTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.staffPool - sum(model.staffTotals))}</td></tr>
       <tr><td>Programs &amp; building</td><td class="num">${money(programPool)}</td>${model.programTotals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(programPool - sum(model.programTotals))}</td></tr></tbody>
       <tfoot><tr><td>Whole budget</td><td class="num">${money(model.total)}</td>${model.totals.map((c) => `<td class="num">${money(c)}</td>`).join('')}<td class="num">${money(model.unassigned)}</td></tr></tfoot></table></section>
-    ${staffLinesPanel(model, lay, canSeePay)}
+    ${staffLinesPanel(model, lay)}
     ${notes.length ? `<section class="cv-panel"><h3>Shared and split lines, and why</h3><table class="cv-table"><thead><tr><th scope="col">Line</th><th scope="col" class="num">Budget</th><th scope="col">Split</th><th scope="col">Why</th></tr></thead><tbody>
       ${notes.map((r) => `<tr><td>${e(accountDisplayName(lay, r.line.category, r.line.name))}</td><td class="num">${money(r.cents)}</td><td>${e(methodText(r))}</td><td>${e(r.note || '—')}</td></tr>`).join('')}</tbody></table></section>` : ''}
     <div class="cv-foot"><small>Timothy Lutheran Church · From our Neighborhood to the Nations</small><small>${model.unassigned ? 'Draft for discussion' : 'Proposed budget'} · planned resource allocations, not measures of ministry impact</small></div>

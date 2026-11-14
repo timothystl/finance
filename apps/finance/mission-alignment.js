@@ -25,7 +25,7 @@ const fail = (message) => { throw new FormValidationError(message); };
 const sum = (v) => v.reduce((a, b) => a + b, 0);
 export const lineCents = (line) => line?.plan?.plannedAmountCents || 0;
 export const expenseLines = (builder) => builder.lines.filter((l) => l.classification !== 'Income');
-export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], note: '' } });
+export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], leads: {}, benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], note: '' } });
 
 // ── Reading and normalizing ──────────────────────────────────────────────────────────────────
 
@@ -73,6 +73,7 @@ export function normalizeMission(raw) {
       ...plannerFields(person),
     });
   }
+  out.leads = leadsFrom(raw.leads, new Set(out.staff.map((p) => p.id)));
   out.benefitLines = Array.isArray(raw.benefitLines) ? [...new Set(raw.benefitLines.map(String))].slice(0, 200) : [];
   if (isShares(raw.buildingUse) && sum(raw.buildingUse) === FULL) out.buildingUse = [...raw.buildingUse];
   const bullets = raw.story?.bullets;
@@ -89,6 +90,25 @@ export async function readMission(db, year) {
   return { ...normalizeMission(value), stored: row.value };
 }
 
+// Who leads each budget line: { [category]: { [staffId]: basis points of the line } }, at most 100%
+// per line. It names responsibility only; no money moves between the line and the person.
+function leadsFrom(raw, ids) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [c, byStaff] of Object.entries(raw)) {
+    if (!byStaff || typeof byStaff !== 'object') continue;
+    const entry = {};
+    let total = 0;
+    for (const [id, bp] of Object.entries(byStaff)) {
+      if (!ids.has(id) || !Number.isInteger(bp) || bp <= 0 || total + bp > FULL) continue;
+      entry[id] = bp; total += bp;
+    }
+    if (Object.keys(entry).length) out[String(c)] = entry;
+  }
+  return out;
+}
+
+// Earlier "time on this line" entries are kept as they were saved but no longer counted.
 function lineTimeFrom(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -177,7 +197,7 @@ export function missionModel(builder, data) {
     const entry = data.lines[line.category] || null;
     const method = entry?.method || null;
     const shares = entry && method !== 'spread' ? entry.shares : [0, 0, 0, 0];
-    return { line, cents, isSource: false, entry, method, shares, note: entry?.note || '', staffCost: 0, staffBy: [] };
+    return { line, cents, isSource: false, entry, method, shares, note: entry?.note || '', leads: [] };
   });
   const rowByCategory = new Map(rows.filter((r) => !r.isSource).map((r) => [r.line.category, r]));
   for (const r of rows) {
@@ -187,37 +207,15 @@ export function missionModel(builder, data) {
     r.parts.forEach((p, i) => { programTotals[i] += p; });
     unassigned += parts[4];
   }
-  // Time a person gives to a "spread" line follows the lines aligned directly.
-  const directSpread = toShares(programTotals);
-  const lineShares = (r) => (r.method === 'spread' ? directSpread : r.shares);
   const staffTotals = [0, 0, 0, 0];
   const staff = data.staff.map((person, index) => {
     const benefitShare = data.staff.length && sum(benefitParts) === benefitPool ? benefitParts[index] : 0;
     const pool = ownPay[index] + benefitShare;
     const shares = staffShares(person);
-    // Time on specific budget lines takes that line's Ends; the rest of the time takes the
-    // person's own split. Either can leave part of the cost not yet aligned.
-    const onLines = Object.entries(person.lineTime || {}).filter(([c, bp]) => rowByCategory.has(c) && bp > 0);
-    const lineBp = sum(onLines.map(([, bp]) => bp));
-    const pieces = apportion(pool, [...onLines.map(([, bp]) => bp), FULL - lineBp]);
-    const parts = [0, 0, 0, 0];
-    let open = 0;
-    onLines.forEach(([c, bp], i) => {
-      const r = rowByCategory.get(c);
-      r.staffCost += pieces[i];
-      r.staffBy.push({ id: person.id, label: person.label, bp, cents: pieces[i] });
-      const ls = lineShares(r);
-      const split = apportion(pieces[i], [...ls, FULL - sum(ls)]);
-      split.slice(0, 4).forEach((v, j) => { parts[j] += v; });
-      open += split[4];
-    });
-    const rest = apportion(pieces.at(-1), [...shares, FULL - sum(shares)]);
-    rest.slice(0, 4).forEach((v, j) => { parts[j] += v; });
-    open += rest[4];
-    parts.forEach((p, i) => { staffTotals[i] += p; });
-    unassigned += open;
-    const effShares = pool > 0 ? toShares(parts) : (lineBp ? shares : shares);
-    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, effShares, lineBp, onLines, parts, unassigned: open, week: person.week, weekResult: weekShares(person.week) };
+    const parts = apportion(pool, [...shares, FULL - sum(shares)]);
+    parts.slice(0, 4).forEach((p, i) => { staffTotals[i] += p; });
+    unassigned += parts[4];
+    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, effShares: shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week) };
   });
   // "Spread like the budget" follows everything that is aligned directly, staff time included.
   const basis = programTotals.map((v, i) => v + staffTotals[i]);
@@ -230,6 +228,24 @@ export function missionModel(builder, data) {
     unassigned += r.unassigned;
   }
   for (const r of rows) if (!r.isSource) r.status = rowStatus(r);
+  // Who leads each line: its share of the line's dollars, and of each End, credited to that person.
+  const staffById = new Map(staff.map((p) => { p.ledLines = []; p.ledCents = 0; p.ledParts = [0, 0, 0, 0]; return [p.id, p]; }));
+  for (const r of rows) {
+    if (r.isSource) continue;
+    const byStaff = Object.entries((data.leads || {})[r.line.category] || {}).filter(([id]) => staffById.has(id));
+    r.leads = [];
+    if (!byStaff.length) continue;
+    const bps = byStaff.map(([, bp]) => bp);
+    const cents = apportion(r.cents, [...bps, FULL - sum(bps)]);
+    byStaff.forEach(([id, bp], i) => {
+      const p = staffById.get(id);
+      const parts = r.parts ? apportion(cents[i], [...(r.cents ? r.parts.map((v) => Math.max(0, v)) : [0, 0, 0, 0]), Math.max(0, (r.unassigned || 0))]).slice(0, 4) : [0, 0, 0, 0];
+      r.leads.push({ id, label: p.label, bp, cents: cents[i] });
+      p.ledLines.push({ category: r.line.category, line: r.line, bp, cents: cents[i] });
+      p.ledCents += cents[i];
+      parts.forEach((v, j) => { p.ledParts[j] += v; });
+    });
+  }
   const totals = programTotals.map((v, i) => v + staffTotals[i]);
   const programRows = rows.filter((r) => !r.isSource);
   const needs = programRows.filter((r) => r.status === 'needs' || r.status === 'partial');
@@ -289,17 +305,14 @@ export function applyLine(data, form, builder) {
   else fail('Choose how this line should be aligned.');
   const lines = { ...data.lines };
   if (entry) lines[category] = entry; else delete lines[category];
-  let staff = data.staff;
-  if (form.staff_time === '1') {
-    staff = data.staff.map((person, i) => {
-      const bp = percent(form[`st_${i}`]);
-      const lineTime = { ...(person.lineTime || {}) };
-      if (bp) lineTime[category] = bp; else delete lineTime[category];
-      if (sum(Object.values(lineTime)) > FULL) fail(`${person.label}’s time on budget lines adds up to more than 100%.`);
-      return { ...person, lineTime };
-    });
+  const leads = { ...(data.leads || {}) };
+  if (form.leads === '1') {
+    const entry = {};
+    data.staff.forEach((person, i) => { const bp = percent(form[`lead_${i}`]); if (bp) entry[person.id] = bp; });
+    if (sum(Object.values(entry)) > FULL) fail('The people leading this line add up to more than 100% of it.');
+    if (Object.keys(entry).length) leads[category] = entry; else delete leads[category];
   }
-  return { data: { ...data, lines, staff }, params: { line: category } };
+  return { data: { ...data, lines, leads }, params: { line: category } };
 }
 
 export function applyBuildingUse(data, form) {
@@ -325,17 +338,19 @@ export function applyStaff(data, form, builder) {
   }
   const mode = form.mode === 'week' ? 'week' : 'quick';
   const person = { ...data.staff[index], label, sources, mode, hours: hoursValue(form.hours, 'Hours per week'), reviewed: form.reviewed === 'yes' };
-  if (form.line_time === '1') {
+  let leads = data.leads || {};
+  if (form.led_lines === '1') {
     const owned = new Set([...data.staff.flatMap((s) => s.sources), ...sources, ...(data.benefitLines || [])]);
-    const lineTime = {};
+    leads = { ...leads };
     for (let i = 0; i < lines.length; i += 1) {
-      const bp = percent(form[`lt_${i}`]);
-      if (!bp) continue;
-      if (owned.has(lines[i].category)) fail('Time can go only to ministry lines, not to staff pay or benefit lines.');
-      lineTime[lines[i].category] = bp;
+      const c = lines[i].category;
+      const bp = percent(form[`led_${i}`]);
+      const entry = { ...(leads[c] || {}) };
+      if (bp && owned.has(c)) fail('Staff lead ministry lines, not staff pay or benefit lines.');
+      if (bp) entry[person.id] = bp; else delete entry[person.id];
+      if (sum(Object.values(entry)) > FULL) fail(`${lines[i].name || c} is led by more than 100% in total.`);
+      if (Object.keys(entry).length) leads[c] = entry; else delete leads[c];
     }
-    if (sum(Object.values(lineTime)) > FULL) fail(`${label}’s time on budget lines adds up to more than 100%.`);
-    person.lineTime = lineTime;
   }
   if (mode === 'quick') person.shares = sharesFrom(form);
   else {
@@ -354,7 +369,7 @@ export function applyStaff(data, form, builder) {
     person.week = week;
   }
   const staff = data.staff.map((s, i) => (i === index ? person : s));
-  return { data: { ...data, staff }, params: { role: person.id, ...(mode === 'week' ? { mode: 'week' } : {}) } };
+  return { data: { ...data, staff, leads }, params: { role: person.id, ...(mode === 'week' ? { mode: 'week' } : {}) } };
 }
 
 export function addStaff(data, form) {
@@ -368,7 +383,8 @@ export function addStaff(data, form) {
 export function removeStaff(data, form) {
   const id = String(form.id || '');
   if (!data.staff.some((s) => s.id === id)) fail('That staff role was not found. Reload and try again.');
-  return { data: { ...data, staff: data.staff.filter((s) => s.id !== id) }, params: {} };
+  const leads = Object.fromEntries(Object.entries(data.leads || {}).map(([c, e]) => [c, Object.fromEntries(Object.entries(e).filter(([k]) => k !== id))]).filter(([, e]) => Object.keys(e).length));
+  return { data: { ...data, leads, staff: data.staff.filter((s) => s.id !== id) }, params: {} };
 }
 
 export function applyStory(data, form) {
