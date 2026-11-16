@@ -25,7 +25,7 @@ const fail = (message) => { throw new FormValidationError(message); };
 const sum = (v) => v.reduce((a, b) => a + b, 0);
 export const lineCents = (line) => line?.plan?.plannedAmountCents || 0;
 export const expenseLines = (builder) => builder.lines.filter((l) => l.classification !== 'Income');
-export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], leads: {}, benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], picks: [[], [], [], []], note: '' } });
+export const emptyMission = () => ({ version: 2, revision: 0, lines: {}, staff: [], leads: {}, adminRule: { method: 'lines' }, benefitLines: [], buildingUse: null, story: { bullets: [[], [], [], []], picks: [[], [], [], []], note: '' } });
 
 // ── Reading and normalizing ──────────────────────────────────────────────────────────────────
 
@@ -58,18 +58,18 @@ export function normalizeMission(raw) {
         split.forEach((s, i) => { shares[i] += (pct * s) / FULL; });
       }
       const rounded = shares.map(Math.floor);
-      out.staff.push({ ...base, hours: null, mode: 'quick', shares: rounded, week: [], reviewed: false });
+      out.staff.push({ ...base, hours: null, mode: 'percent', alloc: { lines: {}, admin: 0, ends: rounded }, week: [], reviewed: false });
       continue;
     }
     out.staff.push({
       ...base,
       hours: Number.isInteger(person.hours) && person.hours > 0 ? person.hours : null,
-      mode: person.mode === 'week' ? 'week' : 'quick',
-      shares: isShares(person.shares) ? [...person.shares] : [0, 0, 0, 0],
+      mode: person.mode === 'week' ? 'week' : 'percent',
+      alloc: allocFrom(person),
+      ...(ruleFrom(person.adminRule) ? { adminRule: ruleFrom(person.adminRule) } : {}),
       week: (Array.isArray(person.week) ? person.week : []).filter((w) => w && Number.isInteger(w.hours) && w.hours >= 0)
         .map((w) => ({ activity: String(w.activity || '').slice(0, 80), hours: w.hours, end: weekEnd(w.end), ...(Number.isInteger(w.weeks) && w.weeks >= 1 && w.weeks < 52 ? { weeks: w.weeks } : {}) })),
       reviewed: Boolean(person.reviewed),
-      lineTime: lineTimeFrom(person.lineTime),
       ...plannerFields(person),
     });
   }
@@ -82,6 +82,7 @@ export function normalizeMission(raw) {
   const picks = raw.story?.picks;
   out.story.picks = Array.isArray(picks) && picks.length === 4 ? picks.map((p) => (Array.isArray(p) ? p.map(String).filter((x) => /^(line|staff):/.test(x)).slice(0, 6) : [])) : [[], [], [], []];
   out.district = districtFrom(raw.district);
+  out.adminRule = ruleFrom(raw.adminRule) || { method: 'lines' };
   return out;
 }
 
@@ -156,6 +157,86 @@ function lineTimeFrom(raw) {
   return out;
 }
 
+// ── Staff allocation ─────────────────────────────────────────────────────────────────────────
+// A person's time is one allocation, in basis points of their total time: shares of budget lines
+// (`lines`), shared administration (`admin`, spread by a rule) and, for time not tied to any line,
+// straight to an End (`ends`). It can be entered as percentages or built from a typical week; the
+// two are kept equal on every save, so time is never counted twice.
+const ADMIN_METHODS = ['lines', 'budget', 'building', 'fixed'];
+function ruleFrom(raw) {
+  if (!raw || typeof raw !== 'object' || !ADMIN_METHODS.includes(raw.method)) return null;
+  return raw.method === 'fixed' ? { method: 'fixed', shares: isShares(raw.shares) ? [...raw.shares] : [2500, 2500, 2500, 2500] } : { method: raw.method };
+}
+const emptyAlloc = () => ({ lines: {}, admin: 0, ends: [0, 0, 0, 0] });
+function cleanAlloc(raw) {
+  const out = emptyAlloc();
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [c, bp] of Object.entries(raw.lines || {})) if (Number.isInteger(bp) && bp > 0 && bp <= FULL) out.lines[String(c)] = bp;
+  out.admin = Number.isInteger(raw.admin) && raw.admin > 0 && raw.admin <= FULL ? raw.admin : 0;
+  if (Array.isArray(raw.ends) && raw.ends.length === 4) out.ends = raw.ends.map((v) => (Number.isInteger(v) && v > 0 && v <= FULL ? v : 0));
+  return out;
+}
+// Earlier saves: a quick split by End plus "time on a line" shares that took precedence over it.
+function allocFrom(person) {
+  if (!person) return emptyAlloc();
+  if (person.alloc) return cleanAlloc(person.alloc);
+  const lines = lineTimeFrom(person.lineTime);
+  const lineBp = sum(Object.values(lines));
+  const shares = isShares(person.shares) ? person.shares : [0, 0, 0, 0];
+  return { lines, admin: 0, ends: shares.map((v) => Math.floor((v * (FULL - lineBp)) / FULL)) };
+}
+export const allocTotal = (a) => sum(Object.values(a.lines)) + a.admin + sum(a.ends);
+const avgHours = (w) => (w.weeks ? (w.hours * w.weeks) / 52 : w.hours);
+// A typical week's average hours by target, and the base (the person's usual hours, else the week).
+export function weekTargets(week, hours) {
+  const t = { lines: {}, admin: 0, ends: [0, 0, 0, 0], total: 0 };
+  for (const w of week) {
+    const h = avgHours(w);
+    t.total += h;
+    if (w.end === 'spread') t.admin += h;
+    else if (typeof w.end === 'number') t.ends[w.end] += h;
+    else if (w.end?.line) t.lines[w.end.line] = (t.lines[w.end.line] || 0) + h;
+    else t.admin += h;
+  }
+  t.base = hours && hours > 0 ? hours : t.total;
+  return t;
+}
+export function allocFromWeek(week, hours) {
+  const t = weekTargets(week, hours);
+  if (!t.base) return emptyAlloc();
+  const bp = (h) => Math.round((h * FULL) / t.base);
+  const lines = {};
+  for (const [c, h] of Object.entries(t.lines)) if (bp(h) > 0) lines[c] = bp(h);
+  return { lines, admin: bp(t.admin), ends: t.ends.map(bp) };
+}
+export const effectiveAlloc = (person) => (person.mode === 'week' && person.week?.length ? allocFromWeek(person.week, person.hours) : allocFrom(person));
+// Bring a typical week in line with percentages: each target's activities are scaled to its new
+// hours (seasonal rows keep their weeks); a new target gets one activity; a dropped one is removed.
+export function rescaleWeek(week, alloc, hours, labelFor = (k) => k) {
+  const t = weekTargets(week, hours);
+  if (!t.base) return week;
+  const keyOf = (w) => (w.end === 'spread' ? 'admin' : typeof w.end === 'number' ? `end:${w.end}` : w.end?.line ? `line:${w.end.line}` : 'admin');
+  const want = { admin: alloc.admin };
+  alloc.ends.forEach((v, i) => { if (v) want[`end:${i}`] = v; });
+  for (const [c, v] of Object.entries(alloc.lines)) want[`line:${c}`] = v;
+  const have = {};
+  for (const w of week) have[keyOf(w)] = (have[keyOf(w)] || 0) + avgHours(w);
+  const out = [];
+  for (const w of week) {
+    const k = keyOf(w);
+    const target = ((want[k] || 0) * t.base) / FULL;
+    if (!target) continue;
+    const factor = have[k] ? target / have[k] : 0;
+    out.push({ ...w, hours: Math.max(1, Math.round(w.hours * factor)) });
+  }
+  for (const [k, v] of Object.entries(want)) {
+    if (!v || have[k]) continue;
+    const end = k === 'admin' ? 'spread' : k.startsWith('end:') ? Number(k.slice(4)) : { line: k.slice(5) };
+    out.push({ activity: labelFor(k).slice(0, 80), hours: Math.round((v * t.base) / FULL), end });
+  }
+  return out.slice(0, MAX_WEEK_ROWS);
+}
+
 // A role brought in from the compensation planner keeps who it is there (name and position, for
 // matching on the next refresh) and its share of the staff benefit lines, in basis points. No pay
 // amount is stored: the dollars always come from the budget plan's own lines.
@@ -221,7 +302,6 @@ export function weekShares(week, lineShares = () => null) {
   return { shares, hours: shares.map((s) => (total * s) / FULL), total, spread, lines };
 }
 
-export const staffShares = (person, lineShares) => (person.mode === 'week' ? weekShares(person.week, lineShares).shares : person.shares);
 
 // ── The model every page reads ───────────────────────────────────────────────────────────────
 
@@ -249,7 +329,7 @@ export function missionModel(builder, data) {
     const entry = data.lines[line.category] || null;
     const method = entry?.method || null;
     const shares = entry && method !== 'spread' ? entry.shares : [0, 0, 0, 0];
-    return { line, cents, isSource: false, entry, method, shares, note: entry?.note || '', leads: [] };
+    return { line, cents, isSource: false, entry, method, shares, note: entry?.note || '', leads: [], staffCost: 0, staffBy: [], staffParts: [0, 0, 0, 0] };
   });
   const rowByCategory = new Map(rows.filter((r) => !r.isSource).map((r) => [r.line.category, r]));
   for (const r of rows) {
@@ -259,19 +339,57 @@ export function missionModel(builder, data) {
     r.parts.forEach((p, i) => { programTotals[i] += p; });
     unassigned += parts[4];
   }
-  // Typical-week hours on a budget line take that line's Ends; a "spread" line follows the lines
-  // aligned directly.
+  // Staff time on a line takes that line's Ends; on a "spread" line, the mix of lines aligned directly.
   const directSpread = toShares(programTotals);
   const lineSharesOf = (c) => { const r = rowByCategory.get(c); if (!r || !r.entry) return null; if (r.method === 'spread') return directSpread; return sum(r.shares) ? r.shares : null; };
+  const ruleShares = (rule, fromLines) => {
+    if (rule.method === 'budget') return directSpread;
+    if (rule.method === 'building') return data.buildingUse || directSpread;
+    if (rule.method === 'fixed') return rule.shares;
+    return sum(fromLines) ? toShares(fromLines) : directSpread; // 'lines': in proportion to their other time
+  };
   const staffTotals = [0, 0, 0, 0];
   const staff = data.staff.map((person, index) => {
     const benefitShare = data.staff.length && sum(benefitParts) === benefitPool ? benefitParts[index] : 0;
     const pool = ownPay[index] + benefitShare;
-    const shares = staffShares(person, lineSharesOf);
-    const parts = apportion(pool, [...shares, FULL - sum(shares)]);
-    parts.slice(0, 4).forEach((p, i) => { staffTotals[i] += p; });
-    unassigned += parts[4];
-    return { ...person, pool, ownPay: ownPay[index], benefitShare, shares, effShares: shares, parts: parts.slice(0, 4), unassigned: parts[4], week: person.week, weekResult: weekShares(person.week, lineSharesOf) };
+    const alloc = effectiveAlloc(person);
+    const lineEntries = Object.entries(alloc.lines).filter(([c, bp]) => bp > 0 && rowByCategory.has(c));
+    const bps = [...lineEntries.map(([, bp]) => bp), alloc.admin, ...alloc.ends];
+    const allocBp = sum(bps);
+    // Over 100% is flagged, and only 100% of the person's cost is counted.
+    const counted = allocBp > FULL ? distribute(FULL, bps) : bps;
+    const pieces = apportion(pool, [...counted, FULL - sum(counted)]);
+    let open = pieces.at(-1);
+    const fromLines = [0, 0, 0, 0];
+    const lineAlloc = [];
+    lineEntries.forEach(([c, bp], i) => {
+      const r = rowByCategory.get(c);
+      const cents = pieces[i];
+      r.staffCost += cents;
+      r.staffBy.push({ id: person.id, label: person.label, bp, cents });
+      lineAlloc.push({ category: c, line: r.line, bp, cents });
+      const ls = lineSharesOf(c);
+      if (!ls) { open += cents; return; }
+      const split = apportion(cents, [...ls, FULL - sum(ls)]);
+      split.slice(0, 4).forEach((v, j) => { fromLines[j] += v; r.staffParts[j] += v; });
+      open += split[4];
+    });
+    const adminCents = pieces[lineEntries.length];
+    alloc.ends.forEach((_, j) => { fromLines[j] += pieces[lineEntries.length + 1 + j]; });
+    const rule = person.adminRule || data.adminRule || { method: 'lines' };
+    const rs = ruleShares(rule, fromLines);
+    let adminParts = [0, 0, 0, 0];
+    if (adminCents && sum(rs)) { const sp = apportion(adminCents, [...rs, FULL - sum(rs)]); adminParts = sp.slice(0, 4); open += sp[4]; } else open += adminCents;
+    const parts = fromLines.map((v, j) => v + adminParts[j]);
+    parts.forEach((v, j) => { staffTotals[j] += v; });
+    unassigned += open;
+    const effShares = pool > 0 ? toShares(parts) : [0, 0, 0, 0];
+    return {
+      ...person, pool, ownPay: ownPay[index], benefitShare, alloc, allocBp, remainingBp: FULL - allocBp, over: allocBp > FULL,
+      lineAlloc, adminBp: alloc.admin, adminCents, adminParts, adminRule: rule, fromLines, parts, unassigned: open, shares: effShares, effShares,
+      onLinesCents: sum(lineAlloc.map((x) => x.cents)), endsCents: sum(alloc.ends.map((_, j) => pieces[lineEntries.length + 1 + j])),
+      openCents: pieces.at(-1), weekResult: weekTargets(person.week || [], person.hours),
+    };
   });
   // "Spread like the budget" follows everything that is aligned directly, staff time included.
   const basis = programTotals.map((v, i) => v + staffTotals[i]);
@@ -284,22 +402,7 @@ export function missionModel(builder, data) {
     unassigned += r.unassigned;
   }
   for (const r of rows) if (!r.isSource) r.status = rowStatus(r);
-  // Typical-week hours on budget lines: each person's hours, share of their week and of their cost.
-  for (const r of rows) if (!r.isSource) r.timeBy = [];
-  for (const p of staff) {
-    p.timeOnLines = [];
-    const wr = p.mode === 'week' ? p.weekResult : null;
-    if (!wr || !wr.total) continue;
-    const entries = Object.entries(wr.lines).filter(([c, h]) => h > 0 && rowByCategory.has(c));
-    if (!entries.length) continue;
-    const bps = entries.map(([, h]) => Math.round((h / wr.total) * FULL));
-    const cents = apportion(p.pool, [...bps, Math.max(0, FULL - sum(bps))]);
-    entries.forEach(([c, h], i) => {
-      const item = { category: c, line: rowByCategory.get(c).line, hours: h, bp: bps[i], cents: cents[i] };
-      p.timeOnLines.push(item);
-      rowByCategory.get(c).timeBy.push({ id: p.id, label: p.label, hours: h, bp: bps[i], cents: cents[i] });
-    });
-  }
+  for (const r of rows) if (!r.isSource) r.combinedParts = (r.parts || [0, 0, 0, 0]).map((v, j) => v + r.staffParts[j]);
   // Who leads each line: its share of the line's dollars, and of each End, credited to that person.
   const staffById = new Map(staff.map((p) => { p.ledLines = []; p.ledCents = 0; p.ledParts = [0, 0, 0, 0]; return [p.id, p]; }));
   for (const r of rows) {
@@ -325,6 +428,8 @@ export function missionModel(builder, data) {
   return {
     rows, staff, totals, staffTotals, programTotals, unassigned,
     total: sum(lines.map(lineCents)), staffPool, benefitPool, benefitLines, programTotal: sum(programRows.map((r) => r.cents)),
+    staffOnLines: sum(staff.map((p) => p.onLinesCents)), staffAdmin: sum(staff.map((p) => p.adminCents)), staffDirect: sum(staff.map((p) => p.endsCents)), staffOpen: sum(staff.map((p) => p.openCents)),
+    adminRule: data.adminRule || { method: 'lines' },
     needsCount: needs.length, needsCents: sum(needs.map((r) => r.unassigned || 0)),
     unlinkedStaff: staff.filter((s) => !s.pool).length,
   };
@@ -384,7 +489,33 @@ export function applyLine(data, form, builder) {
     if (sum(Object.values(entry)) > FULL) fail('The people leading this line add up to more than 100% of it.');
     if (Object.keys(entry).length) leads[category] = entry; else delete leads[category];
   }
-  return { data: { ...data, lines, leads }, params: { line: category } };
+  let staff = data.staff;
+  if (form.staff_time === '1') {
+    const labels = labelsFor(builder);
+    staff = data.staff.map((person, i) => {
+      if (form[`st_${i}`] === undefined) return person;
+      const bp = percent(form[`st_${i}`]);
+      const current = effectiveAlloc(person);
+      if ((current.lines[category] || 0) === bp) return person;
+      const alloc = { ...current, lines: { ...current.lines } };
+      if (bp) alloc.lines[category] = bp; else delete alloc.lines[category];
+      if (allocTotal(alloc) > FULL) fail(`${person.label}’s time would add up to ${(allocTotal(alloc) / 100).toFixed(1)}%, more than 100%. Lower another line first.`);
+      return withAlloc(person, alloc, labels);
+    });
+  }
+  return { data: { ...data, lines, leads, staff }, params: { line: category } };
+}
+
+// Line and target names for activities a percentage change adds to a typical week.
+function labelsFor(builder) {
+  const names = new Map(expenseLines(builder).map((l) => [`line:${l.category}`, l.name || l.category]));
+  return (k) => (k === 'admin' ? 'Administration' : k.startsWith('end:') ? MISSION_GOALS[Number(k.slice(4))][1] : names.get(k) || k.slice(5));
+}
+// Store a new allocation; a typical week, if the person has one, is rescaled to match.
+function withAlloc(person, alloc, labels) {
+  const next = { ...person, alloc };
+  if (person.week?.length) next.week = rescaleWeek(person.week, alloc, person.hours, labels);
+  return next;
 }
 
 export function applyBuildingUse(data, form) {
@@ -408,8 +539,8 @@ export function applyStaff(data, form, builder) {
     if ((data.benefitLines || []).includes(c)) fail(`${c} is a shared staff benefit line. Untick it under shared benefit lines first.`);
     if (lineCents(lines.find((l) => l.category === c)) < 0) fail('Compensation lines must have nonnegative planned amounts.');
   }
-  const mode = form.mode === 'week' ? 'week' : 'quick';
-  const person = { ...data.staff[index], label, sources, mode, hours: hoursValue(form.hours, 'Hours per week'), reviewed: form.reviewed === 'yes' };
+  const mode = form.mode === 'week' ? 'week' : 'percent';
+  let person = { ...data.staff[index], label, sources, mode, hours: hoursValue(form.hours, 'Hours per week'), reviewed: form.reviewed === 'yes' };
   let leads = data.leads || {};
   if (form.led_lines === '1') {
     const owned = new Set([...data.staff.flatMap((s) => s.sources), ...sources, ...(data.benefitLines || [])]);
@@ -424,8 +555,24 @@ export function applyStaff(data, form, builder) {
       if (Object.keys(entry).length) leads[c] = entry; else delete leads[c];
     }
   }
-  if (mode === 'quick') person.shares = sharesFrom(form);
-  else {
+  const owned = new Set([...data.staff.flatMap((s) => s.sources), ...sources, ...(data.benefitLines || [])]);
+  if (mode === 'percent') {
+    const alloc = emptyAlloc();
+    if (form.alloc === '1') {
+      for (let i = 0; i < lines.length; i += 1) {
+        const bp = percent(form[`pct_${i}`]);
+        if (!bp) continue;
+        if (owned.has(lines[i].category)) fail('Time goes to ministry lines, not to staff pay or benefit lines.');
+        alloc.lines[lines[i].category] = bp;
+      }
+      alloc.admin = percent(form.pct_admin);
+      alloc.ends = GOAL_KEYS.map((g) => percent(form[`pct_end_${g}`]));
+    } else {
+      alloc.ends = sharesFrom(form); // an older quick split by End
+    }
+    if (allocTotal(alloc) > FULL) fail(`${label}’s time adds up to ${(allocTotal(alloc) / 100).toFixed(1)}%, more than 100%. Lower a line before saving.`);
+    person = withAlloc({ ...person, mode: person.week?.length ? 'week' : 'percent' }, alloc, labelsFor(builder));
+  } else {
     const week = [];
     for (let i = 0; i < MAX_WEEK_ROWS; i += 1) {
       const activity = String(form[`act_${i}`] ?? '').trim();
@@ -434,10 +581,9 @@ export function applyStaff(data, form, builder) {
       if (!activity) fail('Name each activity that has hours.');
       if (activity.length > 80) fail('Keep activity names to 80 characters.');
       const raw = String(form[`act_end_${i}`] || '');
-      let end = raw === 'spread' ? 'spread' : endIndex(raw);
+      let end = raw === 'spread' || raw === 'admin' ? 'spread' : endIndex(raw);
       if (raw.startsWith('line:')) {
         const c = raw.slice(5);
-        const owned = new Set([...data.staff.flatMap((s) => s.sources), ...sources, ...(data.benefitLines || [])]);
         if (!lines.some((l) => l.category === c) || owned.has(c)) fail(`“${activity}” must count toward a ministry line in this year’s plan.`);
         end = { line: c };
       }
@@ -452,16 +598,33 @@ export function applyStaff(data, form, builder) {
     }
     if (sum(week.map((w) => (w.weeks ? (w.hours * w.weeks) / 52 : w.hours))) > 12000) fail('A typical week cannot average more than 120 hours.');
     person.week = week;
+    person.alloc = allocFromWeek(week, person.hours);
   }
   const staff = data.staff.map((s, i) => (i === index ? person : s));
   return { data: { ...data, staff, leads }, params: { role: person.id, ...(mode === 'week' ? { mode: 'week' } : {}) } };
+}
+
+// How shared administration time reaches the Ends, for all staff or one person.
+export function applyAdminRule(data, form) {
+  const method = String(form.method || '');
+  if (!ADMIN_METHODS.includes(method)) fail('Choose how administration time is shared.');
+  let rule = { method };
+  if (method === 'fixed') {
+    const shares = sharesFrom(form);
+    if (sum(shares) !== FULL) fail('A fixed split must add up to exactly 100%.');
+    rule = { method, shares };
+  }
+  const id = String(form.scope || 'all');
+  if (id === 'all') return { data: { ...data, adminRule: rule, staff: data.staff.map(({ adminRule, ...p }) => p) }, params: form.role ? { role: String(form.role) } : {} };
+  if (!data.staff.some((p) => p.id === id)) fail('That staff role was not found. Reload and try again.');
+  return { data: { ...data, staff: data.staff.map((p) => (p.id === id ? { ...p, adminRule: rule } : p)) }, params: { role: id } };
 }
 
 export function addStaff(data, form) {
   const label = String(form.label || '').trim();
   if (!label || label.length > 60) fail('Give the staff role a name of 1–60 characters.');
   if (data.staff.length >= 30) fail('A year can have up to 30 staff roles.');
-  const person = { id: crypto.randomUUID(), label, hours: null, sources: [], mode: 'quick', shares: [0, 0, 0, 0], week: [], reviewed: false };
+  const person = { id: crypto.randomUUID(), label, hours: null, sources: [], mode: 'percent', alloc: emptyAlloc(), week: [], reviewed: false };
   return { data: { ...data, staff: [...data.staff, person] }, params: { role: person.id } };
 }
 
@@ -541,7 +704,7 @@ export function importStaff(data, form, builder, { workers } = {}) {
     let person = staff.find((s) => s.planKey === w.key) || staff.find((s) => !s.planKey && payLines.some((c) => s.sources.includes(c)));
     if (!person) {
       if (staff.length >= 30) fail('A year can have up to 30 staff roles.');
-      person = { id: crypto.randomUUID(), label: (w.position || w.name).slice(0, 60), hours: null, sources: [], mode: 'quick', shares: [0, 0, 0, 0], week: [], reviewed: false };
+      person = { id: crypto.randomUUID(), label: (w.position || w.name).slice(0, 60), hours: null, sources: [], mode: 'percent', alloc: emptyAlloc(), week: [], reviewed: false };
       staff.push(person);
       added += 1;
     }
@@ -590,24 +753,6 @@ export function applyLines(data, form, builder) {
   return { data: { ...data, lines: next }, params: { changed: String(changed) } };
 }
 
-// Percentages typed straight into the Staff time table (quick splits only; a typical week is
-// edited in its own builder).
-export function applyStaffShares(data, form) {
-  let changed = 0;
-  const staff = data.staff.map((s) => ({ ...s }));
-  for (let i = 0; i < 60 && form[`srole_${i}`] !== undefined; i += 1) {
-    const person = staff.find((s) => s.id === String(form[`srole_${i}`]));
-    if (!person) fail('The staff roles changed. Reload and try again.');
-    const shares = GOAL_KEYS.map((g) => percent(form[`scell_${i}_${g}`]));
-    if (shares.join(',') === String(form[`sorig_${i}`] || '')) continue;
-    if (person.mode === 'week') fail(`${person.label}’s time comes from a typical week. Edit it there.`);
-    if (sum(shares) > FULL) fail(`${person.label}’s shares add up to more than 100%.`);
-    person.shares = shares;
-    changed += 1;
-  }
-  return { data: { ...data, staff }, params: { changed: String(changed) } };
-}
-
 function moneyCents(raw, label) {
   const v = String(raw ?? '').replace(/[$,\s]/g, '');
   if (v === '') return null;
@@ -634,9 +779,9 @@ export function applyDistrict(data, form) {
 }
 
 const ACTIONS = {
+  'admin-rule': { run: applyAdminRule, page: 'staff-time' },
   district: { run: applyDistrict, page: 'district' },
   lines: { run: applyLines, page: 'mission' },
-  'staff-shares': { run: applyStaffShares, page: 'staff-time' },
   line: { run: applyLine, page: 'mission' },
   building: { run: applyBuildingUse, page: 'mission' },
   staff: { run: applyStaff, page: 'staff-time' },
@@ -756,48 +901,70 @@ export function missionLive() {
     cellsForm.addEventListener('submit', (event) => { if (!cellsForm.reportValidity()) event.preventDefault(); else cellsForm.dataset.sending = '1'; });
     window.addEventListener('beforeunload', (event) => { if (cellsForm.classList.contains('is-dirty') && !cellsForm.dataset.sending) event.preventDefault(); });
   });
+  const pctOut = (bp) => (Math.round(bp) / 100).toFixed(1).replace(/\.0$/, '') + '%';
   document.querySelectorAll('form[data-ma-week]').forEach((form) => {
-    const cents = Number(form.dataset.cents || 0);
     const target = Number(form.dataset.hours || 0);
     const update = () => {
-      const direct = [0, 0, 0, 0];
-      let spread = 0;
-      form.querySelectorAll('[data-week-row]').forEach((row) => {
+      let total = 0;
+      const rows = Array.from(form.querySelectorAll('[data-week-row]')).map((row) => {
         const raw = Number(row.querySelector('[data-week-hours]').value) || 0;
         const weeksEl = row.querySelector('[data-week-weeks]');
         const weeks = weeksEl && Number(weeksEl.value) >= 1 && Number(weeksEl.value) < 52 ? Number(weeksEl.value) : 52;
         const h = (raw * weeks) / 52;
-        const sel = row.querySelector('[data-week-end]');
-        const end = sel.value;
-        if (end === 'spread') spread += h;
-        else if (['welcome', 'receive', 'grow', 'go'].includes(end)) direct[['welcome', 'receive', 'grow', 'go'].indexOf(end)] += h;
-        else if (end.indexOf('line:') === 0) {
-          const opt = sel.options[sel.selectedIndex];
-          const ls = opt && opt.dataset.shares ? opt.dataset.shares.split(',').map(Number) : null;
-          const tot = ls ? ls.reduce((a, b) => a + b, 0) : 0;
-          if (!tot) spread += h; else { ls.forEach((bp, i) => { direct[i] += (h * bp) / FULL; }); spread += (h * (FULL - tot)) / FULL; }
-        }
+        total += h;
+        return { row, h, has: row.querySelector('[data-week-hours]').value.trim() !== '' };
       });
-      const d = direct.reduce((a, b) => a + b, 0);
-      const total = d + spread;
-      const shares = d ? direct.map((h) => Math.round((h / d) * FULL)) : (total ? [2500, 2500, 2500, 2500] : [0, 0, 0, 0]);
-      paint(form.querySelector('[data-ma-bar]'), shares);
-      shares.forEach((s, i) => {
-        const set = (k, v) => { const el = form.querySelector('[data-week-' + k + '="' + i + '"]'); if (el) el.textContent = v; };
-        set('h', ((total * s) / FULL).toFixed(1)); set('pct', Math.round(s / 100) + '%'); set('usd', usd((cents * s) / FULL));
+      const base = target || total;
+      rows.forEach(({ row, h, has }) => {
+        const avg = row.querySelector('[data-week-avg]');
+        const pc = row.querySelector('[data-week-rowpct]');
+        if (avg) avg.textContent = has ? h.toFixed(1) : '—';
+        if (pc) pc.textContent = has && base ? pctOut((h / base) * FULL) : '—';
       });
       const sumOut = form.querySelector('[data-week-total]');
-      if (sumOut) sumOut.textContent = String(Math.round(total * 10) / 10);
+      if (sumOut) sumOut.textContent = total.toFixed(1);
       const badge = form.querySelector('[data-week-badge]');
       if (badge) {
-        const ok = !target || Math.abs(total - target) < 0.5;
-        badge.textContent = !target ? (Math.round(total * 10) / 10) + ' hours' : ok ? 'Matches ' + target + ' hours' : (total > target ? (total - target).toFixed(1).replace(/\.0$/, '') + ' hours over ' : (target - total).toFixed(1).replace(/\.0$/, '') + ' hours under ') + target;
-        badge.className = 'ma-badge ' + (ok ? 'ok' : 'warn');
+        const diff = total - target;
+        const ok = !target || Math.abs(diff) < 0.05;
+        badge.textContent = !target ? total.toFixed(1) + ' hours' : ok ? 'Matches ' + target + ' hours' : diff > 0 ? diff.toFixed(1) + ' h over ' + target + ': only 100% is counted' : (-diff).toFixed(1) + ' h short of ' + target + ': stays not yet allocated';
+        badge.className = 'ma-badge ' + (ok ? 'ok' : diff > 0 ? 'bad' : 'warn');
       }
     };
     form.addEventListener('input', update);
     form.addEventListener('change', update);
     update();
+  });
+  document.querySelectorAll('form[data-ma-alloc]').forEach((form) => {
+    const cents = Number(form.dataset.cents || 0);
+    const hours = Number(form.dataset.hours || 0);
+    const inputs = Array.from(form.querySelectorAll('input[data-alloc]'));
+    const update = () => {
+      const bps = inputs.map(pct);
+      const total = bps.reduce((a, b) => a + b, 0);
+      inputs.forEach((el, i) => {
+        const tr = el.closest('tr');
+        const h = tr && tr.querySelector('[data-alloc-h]');
+        const c = tr && tr.querySelector('[data-alloc-c]');
+        if (h) h.textContent = bps[i] && hours ? ((bps[i] * hours) / FULL).toFixed(1) : '';
+        if (c) c.textContent = bps[i] ? usd((cents * bps[i]) / FULL) : '';
+        el.classList.toggle('is-over', total > FULL);
+        el.setCustomValidity(total > FULL && i === 0 ? 'This person’s time adds up to more than 100%.' : '');
+      });
+      const set = (k, v) => { const el = form.querySelector('[data-alloc-' + k + ']'); if (el) el.textContent = v; };
+      set('sum', pctOut(total));
+      set('rest', pctOut(Math.max(0, FULL - total)));
+      set('hsum', hours ? ((total * hours) / FULL).toFixed(1) : '');
+      set('csum', usd((cents * Math.min(total, FULL)) / FULL));
+      set('total', pctOut(total) + ' allocated');
+      const badge = form.querySelector('[data-alloc-badge]');
+      if (badge) {
+        badge.textContent = total > FULL ? pctOut(total - FULL) + ' over: lower a line before saving' : total < FULL ? pctOut(FULL - total) + ' remaining' + (hours ? ' · ' + (((FULL - total) * hours) / FULL).toFixed(1) + ' h/wk' : '') + ' · ' + usd((cents * (FULL - total)) / FULL) + ' not yet allocated' : 'All of their time is allocated';
+        badge.className = 'ma-badge ' + (total > FULL ? 'bad' : total < FULL ? 'warn' : 'ok');
+      }
+    };
+    inputs.forEach((el) => { el.addEventListener('input', update); el.addEventListener('focus', () => el.select()); });
+    form.addEventListener('submit', (event) => { if (!form.reportValidity()) event.preventDefault(); });
   });
 }
 export const MISSION_LIVE_JS = '(' + missionLive.toString() + ')();';

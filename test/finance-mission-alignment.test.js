@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   apportion, applyLine, applyLines, applyStaff, addStaff, applyStory, missionModel, normalizeMission, saveMission, weekShares, emptyMission, canManageMission,
-  importStaff, plannerWorkers, applyBenefitLines, applyStaffShares, removeStaff as removeStaffFn,
+  importStaff, plannerWorkers, applyBenefitLines, applyAdminRule, rescaleWeek, removeStaff as removeStaffFn,
 } from '../apps/finance/mission-alignment.js';
 import { renderMissionPage, renderStaffTimePage } from '../apps/finance/mission-pages.js';
 import { renderCongregationPage, renderMissionReportPage, personnelShare } from '../apps/finance/mission-visuals.js';
@@ -64,12 +64,12 @@ describe('mission model', () => {
     expect(r.hours[1]).toBe(2800);
     expect(weekShares([{ activity: 'Admin', hours: 100, end: 'spread' }]).shares).toEqual([2500, 2500, 2500, 2500]);
   });
-  it('reads this morning’s first version: staff time on lines becomes a quick split to review', () => {
+  it('reads this morning’s first version: staff time on lines becomes time by End to review', () => {
     const v1 = { revision: 3, lines: { 'Expenses:Hospitality': [10000, 0, 0, 0], 'Expenses:Worship': [0, 5000, 5000, 0] }, staff: [{ id: 'p', label: 'Pastor', sources: ['Expenses:Salary'], allocations: { 'Expenses:Hospitality': 2000, 'Expenses:Worship': 8000 } }] };
     const data = normalizeMission(v1);
     expect(data.lines['Expenses:Hospitality'].method).toBe('one');
     expect(data.lines['Expenses:Worship']).toMatchObject({ method: 'split', shares: [0, 5000, 5000, 0] });
-    expect(data.staff[0]).toMatchObject({ mode: 'quick', shares: [2000, 4000, 4000, 0], reviewed: false });
+    expect(data.staff[0]).toMatchObject({ mode: 'percent', alloc: { lines: {}, admin: 0, ends: [2000, 4000, 4000, 0] }, reviewed: false });
   });
 });
 
@@ -166,21 +166,13 @@ describe('who leads each budget line', () => {
     expect(() => applyStaff(data, { ...form, led_3: '5' }, builder)).toThrow(/ministry lines/);
     expect(removeStaffFn(fromLine, { id: 'q' }).data.leads).toEqual({});
   });
-  it('saves percentages typed into the Staff time table, quick splits only', () => {
+  it('shows the lines each person leads beside their time', () => {
     const data = state();
-    const next = applyStaffShares(data, { srole_0: 'p', sorig_0: '2000,4000,3000,1000', scell_0_welcome: '50', scell_0_receive: '50' });
-    expect(next.data.staff[0].shares).toEqual([5000, 5000, 0, 0]);
-    const week = { ...data, staff: [{ ...data.staff[0], mode: 'week' }] };
-    expect(() => applyStaffShares(week, { srole_0: 'p', sorig_0: '0,0,0,0', scell_0_go: '10' })).toThrow(/typical week/);
     const html = renderStaffTimePage({ builder, data: { ...data, leads: { 'Expenses:Worship': { p: 10000 } } }, params: new URLSearchParams('role=p'), canEdit: true });
-    expect(html).toContain('name="scell_0_welcome" form="ma-staff-cells"');
     expect(html).toContain('Lines Pastor leads');
-    expect(html).toContain('Leads 1 line · $6,000');
     const drawer = renderMissionPage({ builder, data, params: new URLSearchParams('line=Expenses%3AUtilities'), canEdit: true });
     expect(drawer).toContain('Who leads this line');
     expect(drawer).toContain('name="lead_0"');
-    expect(drawer).toContain('+ Assign');
-    expect(drawer).toContain('<th scope="col">Led by</th>');
   });
   it('hides lines with nothing planned unless asked', () => {
     const b = { ...builder, lines: [...builder.lines, line('Expenses:Old line', 0)] };
@@ -254,7 +246,8 @@ describe('mission pages', () => {
     const data = state();
     const html = renderStaffTimePage({ builder, data, params: params('role=p&mode=week&template=pastor'), canEdit: true });
     expect(html).toContain('Where staff compensation goes');
-    expect(html).toContain('What this week adds up to');
+    expect(html).toContain('Build from a typical week');
+    expect(html).toContain('How Pastor’s time rolls up to the Ends');
     expect(html).toContain('value="Sermon &amp; worship preparation"');
     expect(renderStaffTimePage({ builder, data, params: params(), canEdit: false })).toContain('only a Finance administrator');
   });
@@ -295,12 +288,12 @@ describe('typical week on budget lines and seasonal work', () => {
     expect(() => applyStaff(data, { ...form, act_weeks_2: '60' }, builder)).toThrow(/1 to 52/);
     const m = missionModel(builder, saved);
     const util = m.rows.find((r) => r.line.category === 'Expenses:Utilities');
-    expect(util.timeBy[0]).toMatchObject({ id: 'p', hours: 400 });
-    expect(m.staff[0].timeOnLines[0].category).toBe('Expenses:Utilities');
+    expect(util.staffBy[0].id).toBe('p');
+    expect(util.staffBy[0].bp).toBe(972); // 4 of 41.15 average hours
+    expect(m.staff[0].lineAlloc[0].category).toBe('Expenses:Utilities');
     const html = renderStaffTimePage({ builder, data: saved, params: new URLSearchParams('role=p'), canEdit: true });
-    expect(html).toContain('A budget line (follows its value)');
+    expect(html).toContain('Budget lines (time follows the line’s split)');
     expect(html).toContain('name="act_weeks_2"');
-    expect(html).toContain('Time on budget lines');
     const report = renderMissionReportPage({ builder, data: saved, canSeePay: false });
     expect(report).toContain('Staff time on budget lines');
     expect(report).not.toContain('Cost of that time');
@@ -467,3 +460,69 @@ describe('mission routes', () => {
     expect(await (await get('trends', 'council')).text()).toContain('How the budget has changed since');
   });
 });
+
+describe('staff time through budget lines', () => {
+  const pctState = () => {
+    const data = state();
+    data.staff[0] = { ...data.staff[0], mode: 'percent', hours: 5000, alloc: { lines: {}, admin: 0, ends: [0, 0, 0, 0] } };
+    delete data.staff[0].shares;
+    return data;
+  };
+  it('carries 1% of the pastor on Hospitality to Welcome, counted once', () => {
+    const form = { id: 'p', label: 'Pastor', mode: 'percent', alloc: '1', hours: '50', pct_0: '1', pct_1: '60', pct_admin: '10', pct_end_go: '9', reviewed: 'yes', source_3: 'Expenses:Salary', source_4: 'Expenses:Benefits' };
+    const saved = applyStaff(pctState(), form, builder).data;
+    expect(saved.staff[0].alloc).toEqual({ lines: { 'Expenses:Hospitality': 100, 'Expenses:Worship': 6000 }, admin: 1000, ends: [0, 0, 0, 900] });
+    const m = missionModel(builder, saved);
+    const hosp = m.rows.find((r) => r.line.category === 'Expenses:Hospitality');
+    expect(hosp.staffCost).toBe(100000); // $1,000 of $100,000
+    expect(hosp.combinedParts[0]).toBe(hosp.cents + 100000);
+    const p = m.staff[0];
+    expect(p.allocBp).toBe(8000);
+    expect(p.remainingBp).toBe(2000);
+    expect(p.unassigned).toBe(2000000);
+    expect(sum4(p.parts) + p.unassigned).toBe(p.pool);
+    expect(m.staffTotals.reduce((a, b) => a + b, 0) + m.staffOpen).toBe(m.staffPool);
+    // Admin follows the person's other time: 1 Welcome : 60 Receive : 9 Go.
+    expect(p.adminParts[1]).toBeGreaterThan(p.adminParts[3]);
+    expect(p.adminParts[2]).toBe(0);
+    expect(total(m)).toBe(m.total);
+  });
+  it('refuses more than 100% when saved, and counts only 100% of an over-allocation', () => {
+    expect(() => applyStaff(pctState(), { id: 'p', label: 'Pastor', mode: 'percent', alloc: '1', pct_1: '80', pct_admin: '30' }, builder)).toThrow(/more than 100/);
+    const data = pctState();
+    data.staff[0].alloc = { lines: { 'Expenses:Worship': 9000 }, admin: 3000, ends: [0, 0, 0, 0] };
+    const m = missionModel(builder, data);
+    expect(m.staff[0].over).toBe(true);
+    expect(sum4(m.staff[0].parts)).toBe(m.staff[0].pool);
+    expect(total(m)).toBe(m.total);
+    const html = renderStaffTimePage({ builder, data, params: new URLSearchParams(), canEdit: true });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('20% over');
+  });
+  it('keeps the week and the percentages as one allocation', () => {
+    const data = pctState();
+    const week = applyStaff(data, { id: 'p', label: 'Pastor', mode: 'week', hours: '50', act_0: 'Preaching', act_hours_0: '30', act_end_0: 'line:Expenses:Worship', act_1: 'Admin', act_hours_1: '10', act_end_1: 'spread', act_2: 'VBS', act_hours_2: '26', act_weeks_2: '2', act_end_2: 'grow' }, builder).data;
+    expect(week.staff[0].alloc).toEqual({ lines: { 'Expenses:Worship': 6000 }, admin: 2000, ends: [0, 0, 200, 0] });
+    const pct = applyStaff(week, { id: 'p', label: 'Pastor', mode: 'percent', alloc: '1', hours: '50', pct_1: '50', pct_admin: '20', pct_end_grow: '2' }, builder).data.staff[0];
+    expect(pct.alloc.lines).toEqual({ 'Expenses:Worship': 5000 });
+    expect(pct.week.find((w) => w.activity === 'Preaching').hours).toBe(2500);
+    expect(pct.week.find((w) => w.activity === 'VBS')).toMatchObject({ hours: 2600, weeks: 2 });
+    expect(rescaleWeek([], { lines: { X: 1000 }, admin: 0, ends: [0, 0, 0, 0] }, 4000, () => 'X line')).toEqual([{ activity: 'X line', hours: 400, end: { line: 'X' } }]);
+  });
+  it('sets staff time from a budget line, and shares administration by a chosen rule', () => {
+    const data = pctState();
+    const fromLine = applyLine(data, { category: 'Expenses:Hospitality', method: 'one', end: 'welcome', staff_time: '1', st_0: '1' }, builder).data;
+    expect(fromLine.staff[0].alloc.lines).toEqual({ 'Expenses:Hospitality': 100 });
+    const drawer = renderMissionPage({ builder, data: fromLine, params: new URLSearchParams('line=Expenses%3AHospitality'), canEdit: true });
+    expect(drawer).toContain('name="st_0"');
+    expect(drawer).toContain('$1,000');
+    const ruled = applyAdminRule(fromLine, { method: 'fixed', share_welcome: '25', share_receive: '25', share_grow: '25', share_go: '25', scope: 'all' }).data;
+    expect(ruled.adminRule).toEqual({ method: 'fixed', shares: [2500, 2500, 2500, 2500] });
+    expect(() => applyAdminRule(fromLine, { method: 'fixed', share_welcome: '50', scope: 'all' })).toThrow(/exactly 100/);
+    const one = applyAdminRule(fromLine, { method: 'budget', scope: 'p' }).data;
+    expect(one.staff[0].adminRule).toEqual({ method: 'budget' });
+    const withAdmin = { ...ruled, staff: [{ ...ruled.staff[0], alloc: { lines: {}, admin: 10000, ends: [0, 0, 0, 0] } }] };
+    expect(missionModel(builder, withAdmin).staff[0].parts).toEqual([2500000, 2500000, 2500000, 2500000]);
+  });
+});
+const sum4 = (a) => a.reduce((x, y) => x + y, 0);

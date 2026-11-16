@@ -93,25 +93,31 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   Percent view an admin can type straight into the Welcome/Receive/Grow/Go cells and save every
   changed row at once; only rows that changed are written, and each keeps its reason.
 - **Staff time** (admin only, because it sits beside compensation). Each role links its existing
-  salary and benefit lines, then splits its time by a quick percentage or a typical week of
-  activities (templates for pastor, educator, musician, office and building care; "spread across
-  all four" hours follow the rest). Linked compensation is counted by time instead of on its own
-  line, never twice. A line belongs to one role, and a line split on Line items by End cannot be linked.
+  salary and benefit lines; that cost is counted once, through the person's time. Time is one
+  allocation per person (`alloc`: basis points on budget lines, on shared administration, and
+  straight to an End when not tied to a line), entered two ways that stay in step: **Percent by
+  budget line**, or **Build from a typical week** (activities with hours and optional "weeks a year",
+  each pointed at a budget line, shared administration or an End; hours ÷ the person's weekly hours
+  give the percentages). Saving percentages rescales the week's activities to match; saving a week
+  recomputes the percentages. Time on a line carries that share of the person's cost to the line
+  (shown on Line items by End as the line's staff cost, combined with its direct budget) and then
+  follows the line's split to the Ends. Shared administration is spread by an editable rule
+  (`adminRule`, overridable per person): in proportion to the person's other time (default), like
+  the whole budget, by the building-use preset, or a fixed split. Time left unallocated shows as not
+  yet aligned; a person over 100% is flagged and only 100% of their cost is counted, and saves over
+  100% are refused. Staff time can also be set from a line's panel on Line items by End.
+  A line belongs to one role, and a line split on Line items by End cannot be linked. Templates cover
+  pastor, educator, musician, office and building care.
   "Bring in staff from the compensation planner" reads the planner's roster (as the signed-in admin,
   projected for the budget year; workers paid from another budget are left out) and adds a role per
   person with their position and usual hours, linking the budget line whose path or name holds the
   worker's account code. Shared benefit lines (health, pension, disability, FICA) are pooled and
   divided by each person's projected benefits in the planner, stored only as a share in basis
-  points; dollars always come from the budget plan. Refreshing keeps time splits; a person no longer
+  points; dollars always come from the budget plan. Refreshing keeps time; a person no longer
   in the planner is flagged, not removed. Roles hidden from council stay out of council's per-role pies.
-  Quick splits can be typed straight into the Staff time table. Each ministry line can name who
-  leads it (each person's share of the line, at most 100%), set from the line's panel on Line items
-  by End or from the person's editor. Leads are responsibility only: no pay or time moves, the line
-  keeps its own Ends, and the Mission report shows the budget each person oversees by End. Earlier
-  "time on a line" entries (`lineTime`) are kept as saved but no longer counted. In a typical week, an
-  activity can count toward a budget line (its hours follow that line's Ends, shown as time on lines
-  on Staff time, Line items by End and the Mission report, with cost only for roles allowed to see
-  compensation), and seasonal work takes "weeks a year" and counts as its yearly average.
+  Each ministry line can also name who leads it (responsibility only: no pay or time moves). Earlier
+  saves (a quick split by End plus `lineTime`) are read as an allocation: the line entries, with the
+  quick split scaled to the remaining time as time straight to the Ends.
 - **Staff cost share** (on Staff time and the Mission report): church staff salaries and benefits as a
   share of all expenses and of church expenses with Mother's Day Out set aside, pay versus benefits,
   the base-year budget's shares, and all payroll including Mother's Day Out staff.
