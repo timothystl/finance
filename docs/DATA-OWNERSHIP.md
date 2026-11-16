@@ -16,7 +16,7 @@ fixtures, or documentation.
   `finance_property_rent_growth_pct`, the board packet cover-letter template `board_packet_cover_template`,
   each person's final report list, `board_final_report_<username>`, and the ZIP codes Giving › Campaign
   capacity compares with, `finance_campaign_benchmark_zips`, and each budget year's mission alignment,
-  `finance_mission_alignment_<year>`: line splits by End with their reasons, staff time splits, the
+  `finance_mission_alignment_<year>`: line splits by End with their reasons, staff time allocations (by budget line, shared administration and End) and the administration rule, the
   building-use preset and the congregation slide's words. Budget and compensation amounts stay in
   Connect's plan; the alignment only refers to plan lines by category).
   The accounting tables (the list is `FINANCE_TABLES` in `src/finance-storage.js`) were copied from
