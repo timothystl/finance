@@ -184,7 +184,7 @@ export const FINANCE_PARITY_SECTIONS = Object.freeze([
   // established. Unlike those, this carries real money, so dataClassification is 'aggregate'.
   {
     id: 'planning', label: 'Budget', group: 'Planning', permission: 'budget',
-    capabilities: ['budget planner', 'scenarios', 'multi-year forecast', 'outlook', 'board categories', 'purpose tags', 'mission alignment', 'staff time', 'congregation visuals', 'trends'],
+    capabilities: ['budget planner', 'scenarios', 'multi-year forecast', 'outlook', 'board categories', 'purpose tags', 'mission alignment', 'staff time', 'congregation visuals', 'trends', 'district support', 'council brief', 'policy checklist'],
     // The Budget planner is Connect's Budget Planner rebuilt in Finance (planning-builder-pages.js),
     // so the framed Connect planner (page=connect) is gone; that address resolves to it.
     pages: [
@@ -197,6 +197,9 @@ export const FINANCE_PARITY_SECTIONS = Object.freeze([
       { id: 'mission-report', label: 'Mission report', status: 'live' },
       { id: 'congregation', label: 'For the congregation', status: 'live' },
       { id: 'trends', label: 'Trends', status: 'live' },
+      { id: 'district', label: 'District support', status: 'live' },
+      { id: 'brief', label: 'Council brief', status: 'live' },
+      { id: 'policy', label: 'Policy checklist', status: 'live' },
     ],
   },
   // 'planner', 'council', 'benefits', 'benchmarks' and 'rates' are built from the saved compensation plan
