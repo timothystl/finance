@@ -8,9 +8,11 @@
 //             shares: [4 bp], week: [{ activity, hours (hundredths), end: 0..3 | 'spread' }], reviewed }]
 //   buildingUse: [4 bp] | null   the church's "by building use" preset for shared costs
 //   story: { bullets: [[...], [...], [...], [...]], note }   words for the congregation visual
+//   brief: the Council brief's settings (council-brief.js)
 // Version 1 (this morning's first cut: a split per line, staff time as a percentage of ministry
 // lines) is read and converted in memory; the next save stores version 2.
 import { FormValidationError } from './form-fields.js';
+import { applyBrief, briefFrom } from './council-brief.js';
 
 export const MISSION_GOALS = [['welcome', 'Welcome', 'Acceptance'], ['receive', 'Receive', 'Worship'], ['grow', 'Grow', 'Christian education'], ['go', 'Go', 'Outreach']];
 export const GOAL_KEYS = MISSION_GOALS.map(([k]) => k);
@@ -83,6 +85,7 @@ export function normalizeMission(raw) {
   out.story.picks = Array.isArray(picks) && picks.length === 4 ? picks.map((p) => (Array.isArray(p) ? p.map(String).filter((x) => /^(line|staff):/.test(x)).slice(0, 6) : [])) : [[], [], [], []];
   out.district = districtFrom(raw.district);
   out.adminRule = ruleFrom(raw.adminRule) || { method: 'lines' };
+  if (raw.brief) out.brief = briefFrom(raw.brief);
   return out;
 }
 
@@ -780,6 +783,7 @@ export function applyDistrict(data, form) {
 
 const ACTIONS = {
   'admin-rule': { run: applyAdminRule, page: 'staff-time' },
+  brief: { run: (data, form, builder) => applyBrief(data, form, builder), page: 'brief' },
   district: { run: applyDistrict, page: 'district' },
   lines: { run: applyLines, page: 'mission' },
   line: { run: applyLine, page: 'mission' },

@@ -38,7 +38,7 @@ import { DONOR_LETTERS_STYLES, kindOfPage, renderDonorLettersPage } from './dono
 import { fetchGivingLetters, lettersParams, listQuery } from './donor-letters-service.js';
 import { PLEDGE_STYLES, canEditPledges, fetchPledges, handlePledgeWrite, pledgeParams, renderPledgeListPage } from './pledge-pages.js';
 import { canSendLetters, handleDonorLettersPrint, handleDonorLettersWrite, handleStatementCsv, handleLetterSettingsWrite } from './donor-letters-routes.js';
-import { COUNCIL_REPORT_STYLES, councilAnalysisRequests, councilParams, renderCouncilEmailHtml, renderCouncilReportPage } from './council-report-pages.js';
+import { COUNCIL_REPORT_STYLES, councilAnalysisRequests, councilParams, councilPeriods, lensBlock, renderCouncilEmailHtml, renderCouncilReportPage } from './council-report-pages.js';
 import { fetchAccessRoles } from './connect-access-client.js';
 import { fetchFinanceClassification } from './finance-classification-client.js';
 import { fetchFinancePropertyDebt } from './finance-property-debt-client.js';
@@ -121,7 +121,8 @@ import {
   postConnectPropertyReserveMonthlyRemove, postConnectPropertyReserveDisbursementWrite,
   postConnectPropertyReserveDisbursementRemove,
 } from './finance-property-reserves-client.js';
-import { resolveBalanceSheet, resolveBalanceSheetTrend, resolveBalanceSheetPriorYear, parseBalanceSelection, resolveMortgageHistory } from './balance-sheet-service.js';
+import { resolveBalanceSheet, resolveBalanceSheetTrend, resolveBalanceSheetPriorYear, parseBalanceSelection, resolveMortgageHistory, buildLayPosition } from './balance-sheet-service.js';
+import { COUNCIL_BRIEF_STYLES, renderCouncilBriefPage, renderPolicyChecklistPage } from './council-brief.js';
 import {
   postConnectChurchBalancesXlsxImport, postConnectChurchBalancesXlsxPreview,
   postConnectChurchBalancesXlsxCommit, postConnectChurchBalancesMultiYearXlsxImport,
@@ -263,7 +264,7 @@ const SECURITY_HEADERS = Object.freeze({
 // it) and any image embedded in a letter template (a data: URL). Images only; still no script.
 const DONOR_LETTERS_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: https://connect.timothystl.org; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 // The Budget planner's edit form loads one script from this Worker (live totals); nothing else.
-const MISSION_PAGE_IDS = new Set(['mission', 'staff-time', 'mission-report', 'congregation', 'trends', 'district']);
+const MISSION_PAGE_IDS = new Set(['mission', 'staff-time', 'mission-report', 'congregation', 'trends', 'district', 'brief', 'policy']);
 const BUDGET_PLANNER_PAGE_CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 const PLANNER_PAGE_CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'";
 
@@ -1843,6 +1844,11 @@ function renderSectionBody(ctx) {
       return renderMissionPage({ ...shared, prior, canEdit: true });
     }
     if (page.id === 'district') return renderDistrictSupportPage({ ...shared, canEdit: admin });
+    if (page.id === 'brief' || page.id === 'policy') {
+      const givingData = ctx.briefGiving || null;
+      const brief = { ...shared, admin, lay: ctx.briefBalance?.lay || null, balanceAsOf: ctx.briefBalance?.asOf || null, giving: givingData ? lensBlock(givingData, 'general') : null, givingData };
+      return page.id === 'brief' ? renderCouncilBriefPage(brief) : renderPolicyChecklistPage(brief);
+    }
     if (page.id === 'staff-time') return renderStaffTimePage({ ...shared, canEdit: admin, workers: ctx.plannerWorkers });
     if (page.id === 'mission-report') return renderMissionReportPage({ ...shared, admin, canSeePay: roleResult.ok && COMPENSATION_LIVE_ALLOWED_ROLES.includes(roleResult.role) });
     const trend = ctx.budgetTrend && !isSyntheticUnavailable(ctx.budgetTrend) ? ctx.budgetTrend : null;
@@ -2073,7 +2079,7 @@ function renderShell(ctx) {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Timothy Finance${production ? '' : ' — Staging'}</title>
   <link rel="icon" href="/assets/finance-mark.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="/assets/finance-icon-192.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#052241"><meta name="apple-mobile-web-app-title" content="Finance"><meta name="apple-mobile-web-app-capable" content="yes">
-  <style>${SHELL_STYLES}${HEALTH_STYLES}${HEALTH_PARITY_STYLES}${FACILITIES_STYLES}${HR_STYLES}${PAYROLL_STYLES}${GIFT_BATCH_STYLES}${GIFT_TRANSACTIONS_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_REPORTS_STYLES}${DONOR_LETTERS_STYLES}${PLEDGE_STYLES}${GIVING_ANALYTICS_STYLES}${PLANNING_V3_STYLES}${ACCESS_STYLES}${BUDGET_BUILDER_STYLES}${MISSION_STYLES}${DISTRICT_STYLES}${ACQUISITION_STYLES}${PROPERTY_BOOKS_STYLES}${PROPERTY_CHART_STYLES}${BALANCE_STYLES}${FUND_CLEANUP_STYLES}${CHURCH_YEAR_STYLES}</style>
+  <style>${SHELL_STYLES}${HEALTH_STYLES}${HEALTH_PARITY_STYLES}${FACILITIES_STYLES}${HR_STYLES}${PAYROLL_STYLES}${GIFT_BATCH_STYLES}${GIFT_TRANSACTIONS_STYLES}${COUNCIL_REPORT_STYLES}${GIVING_REPORTS_STYLES}${DONOR_LETTERS_STYLES}${PLEDGE_STYLES}${GIVING_ANALYTICS_STYLES}${PLANNING_V3_STYLES}${ACCESS_STYLES}${BUDGET_BUILDER_STYLES}${MISSION_STYLES}${COUNCIL_BRIEF_STYLES}${DISTRICT_STYLES}${ACQUISITION_STYLES}${PROPERTY_BOOKS_STYLES}${PROPERTY_CHART_STYLES}${BALANCE_STYLES}${FUND_CLEANUP_STYLES}${CHURCH_YEAR_STYLES}</style>
 </head>
 <body${councilPreview ? ' class="council-preview"' : ''}>
   <header class="app-header">
@@ -4527,6 +4533,14 @@ export default {
           ? after(budgetBuilder, (result) => (result?.ok ? loadPlannerWorkers(env, accessJwt, result.builder.targetYear).catch(() => null) : null)) : null;
         const missionPriorLoad = missionPage === 'mission' && missionReads
           ? after(budgetBuilder, result => result?.ok ? safeSyntheticRead(() => readMission(env.FINANCE_DB, result.builder.targetYear - 1)) : null) : null;
+        // Council brief and Policy checklist: this year's balance sheet (live only, never the
+        // synthetic fixture) and the giving report's current month (aggregate; read as the viewer,
+        // so Connect decides whether they may see it).
+        const briefPage = ['brief', 'policy'].includes(missionPage);
+        const briefBalanceLoad = briefPage
+          ? resolveBalanceSheet(env, env.FINANCE_DB, { fiscalYear: new Date().getUTCFullYear() }).then((b) => (b?.source === 'live' && b.accounts?.length ? { lay: buildLayPosition(b.accounts, b.equityReclass), asOf: b.asOfDate } : null)).catch(() => null) : null;
+        const briefGivingLoad = briefPage
+          ? fetchGivingBoard(env, accessJwt, { period: councilPeriods(isoDay(new Date()))[0].value }).then((r) => (r?.ok ? r.result : null)).catch(() => null) : null;
         // A council member sees their own Plan draft, read back through Connect as themselves.
         const councilBudgetDraftLoad = plannerView && !councilPreview && roleResult.ok && roleResult.role === 'council'
           ? fetchCouncilBudgetDraft(env, accessJwt) : null;
@@ -4982,7 +4996,7 @@ export default {
           pledgeList: pledgeListLoad ? await pledgeListLoad : null,
           councilAnalysis: councilAnalysisLoad ? await councilAnalysisLoad : null,
           councilBudgetDraft: councilBudgetDraftLoad ? await councilBudgetDraftLoad : null,
-          missionAlignment: await missionLoad, missionPrior: await missionPriorLoad, plannerWorkers: await plannerWorkersLoad, budgetTrend: await budgetTrendLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
+          missionAlignment: await missionLoad, missionPrior: await missionPriorLoad, briefBalance: await briefBalanceLoad, briefGiving: await briefGivingLoad, plannerWorkers: await plannerWorkersLoad, budgetTrend: await budgetTrendLoad, healthView: url.searchParams.get('view'), healthAppeal: url.searchParams.get('appeal'), healthFlow: url.searchParams.get('flow'), financeHealth, churchYear, attendance, breezeGivingView, givingImportView, finalSelection, coverTemplate, canSaveTemplate, facilities, hr, givingBatch, givingAnalytics, givingAnalyticsPeople, givingMdoBooks, campaignBenchmark, gymIncome, accessRoles, budgetBuilder, boardLayout, planningBasis, planningScenarios, planningRunway, propertyBooks, searchParams: url.searchParams,
           metadata, summary, giving, givingSource, section, pageId, councilPreview, roleResult, churchReport, churchReportLive, churchTrendLive,
           balanceSheet, balanceTrends, balancePriorYear, balancePropertyValue, balanceMortgageHistory, balanceSelection, daycareReport, daycareReportLive, daycareEntries, daycareEditId, propertyReport, propertyReportLive, propertyReserves,
           propertyReservesLive, propertyLedgers, propertyLedgersLive, propertyValuation, propertyPolicy, propertyDebt, propertyForecast, propertyForecastLive, propertyDistributions, budgetReport, accountsReport,

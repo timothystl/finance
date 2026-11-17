@@ -124,6 +124,18 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
 - **Mission report** (anyone who sees the budget). Pies for the whole budget, staff time, programs
   and each role (percent only, no pay by person), the table, who leads each line and the budget each
   person oversees by End, and the reasons for shared lines.
+- **Council brief** and **Policy checklist** (anyone who sees the budget; admins edit the settings).
+  The brief answers four questions from live figures only: will the budget work (the plan's net, and
+  the net if the offering line falls to this year's giving projection from the giving report;
+  giving above the plan is never counted), do we have a cushion (free funds from the balance sheet's
+  lay position, the same figure as Balance Sheet › Position, in months of planned expenses against
+  the reserve target, and projected to the end of the budget year), are we spending as intended
+  (shares by End against a target mix, and church staff compensation against a draft cap), and how
+  healthy is the congregation (giving households, year-to-date giving and concentration, totals
+  only). A missing source is said plainly, never shown as $0. The checklist runs the Policy Manual
+  checks (§2.2, §3.1–§3.7 and the draft compensation cap). Settings (reserve months, cap, target
+  mix, offering line, proposal due date, the decisions list) are saved with the year's mission
+  alignment record as `brief`.
 - **District support** (anyone who sees the budget; admins enter counts and benchmarks). The plan's
   District & Synod lines against the Missouri District, the 29-district combined average, the median
   and average district and the lowest/highest district, per congregation and per baptized and confirmed
