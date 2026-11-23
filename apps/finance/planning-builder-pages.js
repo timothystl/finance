@@ -815,7 +815,7 @@ export function renderPlannerPrint({ missionAlignment = null, builder: rawBuilde
     if (row.kind === 'header') return `<tr class="bp-print-group"><td colspan="${cols.length + 1}" style="padding-left:${6 + row.depth * 12}px">${e(row.label)}</td></tr>`;
     return `<tr class="bp-print-total${row.kind === 'net' ? ' is-net' : ''}"><td>${e(row.label)}</td>${cols.map(cell).join('')}</tr>`;
   };
-  const thead = `<thead><tr><th>Category</th>${cols.map((k) => `<th class="n">${e(COLUMN_LABELS[k](p).replace('Projected', 'Proj.'))}</th>`).join('')}</tr></thead>`;
+  const thead = `<thead><tr><th>Category</th>${cols.map((k) => `<th class="${k === 'value' ? 'n is-text' : 'n'}">${e(COLUMN_LABELS[k](p).replace('Projected', 'Proj.'))}</th>`).join('')}</tr></thead>`;
   const watermark = p.draft ? '<div class="bp-watermark" aria-hidden="true">DRAFT</div>' : '';
   if (!rows.length) return `${watermark}<p>No budget lines for FY${p.base} or FY${p.target}.</p>`;
   const revenueRows = rows.filter((row) => row.side === 'revenue');
