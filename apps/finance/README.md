@@ -81,7 +81,7 @@ A separate familiar accounting layout is served at `/accounting` (see ARCHITECTU
 The Budget planner also shows two columns from this work: **% of total** (each subcategory's total
 as a share of all revenue or all expenses, each line as a share of its own subcategory, on the Plan
 year) and **Value** (the line's End(s) from Line items by End; staff pay and benefit lines say they
-follow staff time). Both are in the print sheet and the CSV export, and can be hidden like any column.
+follow staff time). Both are in the print sheet and the CSV export, and can be hidden like any column. A print sheet that includes Value prints landscape so the mission labels fit.
 
 Five Budget pages read the proposed plan (connect.finance-budget-builder.v1) by the church's four
 Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go (outreach).
