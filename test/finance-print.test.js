@@ -150,6 +150,13 @@ describe('board packet content', () => {
     expect(stripLiveSourceNotes('Budget $1 · synthetic fixture')).toBe('Budget $1 · synthetic fixture');
   });
 
+  it('keeps the budget sheet Category column readable when the Value column holds long mission labels', () => {
+    const rule = (sel) => PRINT_STYLES.split('\n').find((l) => l.includes(sel)) || '';
+    expect(rule('bp-print-table td:first-child')).toContain('min-width');
+    expect(rule('bp-print-table td:first-child')).not.toContain('overflow-wrap: anywhere');
+    expect(rule('td.bp-value {')).toContain('white-space: normal');
+  });
+
   it('pins text size so iPhone/iPad Safari does not enlarge the print type', () => {
     expect(PRINT_STYLES).toContain('-webkit-text-size-adjust: 100%');
   });

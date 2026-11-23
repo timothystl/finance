@@ -69,9 +69,11 @@ export const PRINT_STYLES = `
   .print-doc .bp-print-tile strong { display: block; font-size: 12pt; }
   .print-doc .bp-print-table { table-layout: auto; font-size: 7.5pt; }
   .print-doc .bp-print-table th, .print-doc .bp-print-table td { padding: .15rem .3rem; }
-  .print-doc .bp-print-table th:first-child, .print-doc .bp-print-table td:first-child { width: 30%; overflow-wrap: anywhere; }
+  .print-doc .bp-print-table th:first-child, .print-doc .bp-print-table td:first-child { width: 30%; min-width: 1.7in; overflow-wrap: break-word; }
   .print-doc .bp-print-table th.n, .print-doc .bp-print-table td:not(:first-child) { text-align: right; white-space: nowrap; }
   .print-doc .bp-print-table th.n { white-space: normal; }
+  .print-doc .bp-print-table th.is-text, .print-doc .bp-print-table td.bp-value { text-align: left; white-space: normal; min-width: 1.2in; max-width: 1.8in; }
+  .print-doc .bp-print-table td.bp-value * { font-size: inherit; }
   .print-doc .bp-print-tiles { overflow-wrap: anywhere; }
   .print-doc { overflow-x: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-doc .ga-fund, .print-doc .ga-tabs { display: none; }
