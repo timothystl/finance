@@ -136,6 +136,13 @@ Ends: Welcome (acceptance), Receive (worship), Grow (Christian education) and Go
   checks (§2.2, §3.1–§3.7 and the draft compensation cap). Settings (reserve months, cap, target
   mix, offering line, proposal due date, the decisions list) are saved with the year's mission
   alignment record as `brief`.
+- **Reserves** and **Giving scenarios** (anyone who sees the budget). Reserves shows what the
+  church holds (bank accounts and investment groups), the funnel down to free funds, reserve coverage
+  in months with and without Mother's Day Out, what the plan does to free funds by the end of the
+  budget year, and debt against property at book. Giving scenarios replaces the offering line with
+  this year's projection, this year's giving at last year's pattern, and a chosen percent change,
+  then shows each one's net and free funds, what closing the gap would take, and giving health. Both
+  take what-ifs through a GET form (nothing is saved) and share the Council brief's settings.
 - **District support** (anyone who sees the budget; admins enter counts and benchmarks). The plan's
   District & Synod lines against the Missouri District, the 29-district combined average, the median
   and average district and the lowest/highest district, per congregation and per baptized and confirmed
