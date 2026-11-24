@@ -142,11 +142,14 @@ describe('Budget planner (Finance)', () => {
     expect(print).toContain('<div class="bp-watermark" aria-hidden="true">DRAFT</div>');
     expect(print).toContain(`Fiscal Year ${FY} Budget`);
     expect(print).toContain('<th class="n">Change</th>');
+    expect(print).toContain('<th class="n is-text">Value</th>');
+    expect(print).toContain('@page { size: letter landscape;');
     expect(print).not.toContain('name="plan_0"');
     const thisYear = await (await get(makeEnv().env, '&view=qb&print=1&print_mode=thisyear')).text();
     expect(thisYear).toContain(`Fiscal Year ${FY - 1} Budget`);
     expect(thisYear).not.toContain('<th class="n">Change</th>');
     expect(thisYear).not.toContain('<div class="bp-watermark"');
+    expect(thisYear).not.toContain('size: letter landscape');
     const baseOnly = await (await get(makeEnv().env, '&view=qb&print=1&cols=bud,act')).text();
     expect(baseOnly).toContain(`Fiscal Year ${FY - 1} Budget`);
     expect(baseOnly).not.toContain(`Fiscal Year ${FY} Budget`);

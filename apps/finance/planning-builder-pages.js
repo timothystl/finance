@@ -816,7 +816,10 @@ export function renderPlannerPrint({ missionAlignment = null, builder: rawBuilde
     return `<tr class="bp-print-total${row.kind === 'net' ? ' is-net' : ''}"><td>${e(row.label)}</td>${cols.map(cell).join('')}</tr>`;
   };
   const thead = `<thead><tr><th>Category</th>${cols.map((k) => `<th class="${k === 'value' ? 'n is-text' : 'n'}">${e(COLUMN_LABELS[k](p).replace('Projected', 'Proj.'))}</th>`).join('')}</tr></thead>`;
-  const watermark = p.draft ? '<div class="bp-watermark" aria-hidden="true">DRAFT</div>' : '';
+  // The Value column carries mission labels and leads; with it the tables need a landscape sheet
+  // (a named landscape page only for the tables does not widen Chrome's layout, so the whole sheet turns).
+  const wide = cols.includes('value') ? ' bp-print-wide' : '';
+  const watermark = `${p.draft ? '<div class="bp-watermark" aria-hidden="true">DRAFT</div>' : ''}${wide ? '<style>@page { size: letter landscape; margin: .5in .55in; }</style>' : ''}`;
   if (!rows.length) return `${watermark}<p>No budget lines for FY${p.base} or FY${p.target}.</p>`;
   const revenueRows = rows.filter((row) => row.side === 'revenue');
   const expenseRows = rows.filter((row) => row.side === 'expense');
@@ -829,9 +832,9 @@ export function renderPlannerPrint({ missionAlignment = null, builder: rawBuilde
     <div class="bp-print-tiles">${tiles}</div>
     <p>${narrative}</p>
     ${model.excludedCount ? `<p class="bp-print-foot">${model.excludedCount} line${model.excludedCount === 1 ? '' : 's'} left out of this sheet with Choose rows.</p>` : ''}
-    <div class="print-newpage"><h3>Revenue</h3><p class="bp-print-foot">Grouped ${model.boardView ? 'the way the board reads a budget (Board view)' : 'in QuickBooks order'}, whole dollars.</p>
+    <div class="print-newpage${wide}"><h3>Revenue</h3><p class="bp-print-foot">Grouped ${model.boardView ? 'the way the board reads a budget (Board view)' : 'in QuickBooks order'}, whole dollars.</p>
       <table class="bp-print-table">${thead}<tbody>${revenueRows.map(renderRow).join('')}</tbody></table></div>
-    <div class="print-newpage"><h3>Expenses</h3>
+    <div class="print-newpage${wide}"><h3>Expenses</h3>
       <table class="bp-print-table">${thead}<tbody>${expenseRows.map(renderRow).join('')}${net ? renderRow(net) : ''}</tbody></table></div>`;
 }
 
