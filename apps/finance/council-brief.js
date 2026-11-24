@@ -190,7 +190,7 @@ function questionOne(m) {
       ${q1.offering ? `<li>Offering line: ${e(q1.offering.name || q1.offering.category)}, ${money(q1.offeringPlan)} planned.</li>` : ''}
       ${q1.projection != null ? `<li>Giving report projection for this year: ${money(q1.projection)}${q1.behindPct != null ? `, ${Math.abs(q1.behindPct).toFixed(0)}% ${q1.behindPct > 0 ? 'behind' : 'ahead of'} this year’s budget` : ''}. It carries last year’s remaining Sundays forward at this year’s pace.</li>` : ''}
       <li>“If giving holds” lowers only the offering line to this year’s projection; every other line stays as planned. Giving above the plan is not counted.</li></ul>
-      <p><a href="${pageHref('builder', builder.targetYear)}">Open the budget planner</a> · <a href="/?section=giving-analytics&amp;page=council">Giving report</a></p>`)}`;
+      <p><a href="${pageHref('giving-outlook', builder.targetYear)}">Giving scenarios</a> · <a href="${pageHref('builder', builder.targetYear)}">Open the budget planner</a> · <a href="/?section=giving-analytics&amp;page=council">Giving report</a></p>`)}`;
 }
 
 function questionTwo(m) {
@@ -212,7 +212,7 @@ function questionTwo(m) {
     <tr><td>Less the permanent endowment</td><td class="num">−${money(q2.endowment)}</td></tr>
     <tr><td><b>Free for the council</b></td><td class="num"><b>${money(q2.free)}</b></td></tr></tbody></table>
     <p>One month of FY${m.builder.targetYear} expenses is ${money(m.expenses / 12)}. Balances as of ${e(q2.asOf || 'the latest QuickBooks import')}. Free funds include any unrestricted bequests: they are one-time money, not an operating reserve.</p>
-    <p><a href="/?section=balance&amp;page=position">Open the balance sheet</a></p>`)}`;
+    <p><a href="${pageHref('reserves', m.builder.targetYear)}">Reserves in detail</a> · <a href="/?section=balance&amp;page=position">Open the balance sheet</a></p>`)}`;
 }
 
 function questionThree(m) {
@@ -332,7 +332,7 @@ export const COUNCIL_BRIEF_STYLES = `
   .cb-neg { color:#A3321F; } .cb-pos { color:#2B6E4F; }
   .cb-bars { width:100%; border-collapse:collapse; font-size:14px; }
   .cb-bars td { padding:7px 8px; border-bottom:1px solid #E6ECF0; }
-  .cb-bars td:first-child { width:38%; } .cb-bars td.num { width:14%; text-align:right; font-variant-numeric:tabular-nums; }
+  .cb-bars td:first-child { width:38%; } .cb-bars td.num { width:14%; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .cb-track { position:relative; height:16px; background:#EEF2F5; border-radius:3px; padding:0 !important; }
   .cb-bars .cb-track { display:table-cell; }
   .cb-track span { position:absolute; left:0; top:0; bottom:0; border-radius:3px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }

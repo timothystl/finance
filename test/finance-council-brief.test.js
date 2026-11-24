@@ -82,3 +82,35 @@ describe('council brief', () => {
     for (const id of ['brief', 'policy', 'district']) expect(resolveFinancePage(planning, id).id).toBe(id);
   });
 });
+
+describe('reserves and giving scenarios', async () => {
+  const { reservesModel, renderReservesPage, givingScenarios, renderGivingScenariosPage, whatIfNumber } = await import('../apps/finance/council-reserves.js');
+  const fullLay = { ...lay, own: { ...lay.own, totalCents: 160000000 }, owe: { ...lay.owe, totalCents: 30857100 } };
+  it('walks free funds through the plan and the what-ifs', () => {
+    const r = reservesModel({ builder, data: data(), giving, lay: fullLay, params: new URLSearchParams('q4=-10000&mdo_short=10&mdo_offset=50&one_time=5000') });
+    const m = r.m;
+    // MDO tuition $300,000: 10% short = $30,000, half offset = $15,000 net.
+    expect(r.steps.find((s) => /tuition/.test(s.label)).cents).toBe(-1500000);
+    expect(r.end).toBe(m.q2.free - 1000000 + m.q1.netProposed - 3500000 - 1500000 - 500000);
+    expect(r.measures[2].church).toBeGreaterThan(r.measures[2].all);
+    const html = renderReservesPage({ builder, data: data(), giving, lay: fullLay, params: new URLSearchParams() });
+    expect(html).toContain('What we really have');
+    expect(html).toContain('Reserve coverage');
+    expect(html).toContain('Debt ÷ total assets');
+    expect(renderReservesPage({ builder, data: data(), lay: null })).toContain('balance sheet could not be read');
+  });
+  it('tests the offering line against this year’s giving', () => {
+    const s = givingScenarios({ builder, data: data(), giving, lay, params: new URLSearchParams('pct=5&gift=1000') });
+    const proj = s.rows.find((r) => r.key === 'projection');
+    expect(proj.offering).toBe(40500000 + 100000);
+    expect(proj.net).toBe(s.m.q1.netProposed + proj.offering - 44000000);
+    expect(s.rows.find((r) => r.key === 'yours').offering).toBe(Math.round(40600000 * 1.05));
+    expect(s.rows.find((r) => r.key === 'pattern').offering).toBe(Math.round(28892200 / (32380300 / 38400000)) + 100000);
+    const html = renderGivingScenariosPage({ builder, data: data(), giving, givingData: { through_label: 'Through October 31, 2026' }, lay });
+    expect(html).toContain('What if giving closes this year here');
+    expect(html).toContain('Giving health');
+    expect(renderGivingScenariosPage({ builder, data: data(), giving: null, lay })).toContain('giving report could not be read');
+    expect(whatIfNumber('abc')).toBe(0);
+    expect(whatIfNumber('$1,250.50')).toBe(1250.5);
+  });
+});
